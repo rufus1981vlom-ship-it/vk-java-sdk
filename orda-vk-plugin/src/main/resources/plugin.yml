@@ -1,0 +1,6 @@
+name: Orda VK
+version: ${version}
+main: com.orda.vkplugin.OrdaVkPlugin
+api-version: '1.20'
+author: Orda
+description: VK bot bridge for Paper 1.20.4 (commands + game events).

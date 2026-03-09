@@ -1,0 +1,10 @@
+name: OrdaVK
+version: 1.0.0
+main: ordacraft.vk.OrdaVKPlugin
+api-version: '1.20'
+author: OrdaCraft
+commands:
+  helpop:
+    usage: /helpop <question>
+  report:
+    usage: /report <player> <reason>

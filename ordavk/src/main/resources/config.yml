@@ -1,0 +1,26 @@
+vk:
+  token: ""
+  group-id: 0
+  api-version: "5.199"
+  poll-interval-seconds: 2
+  protected-users: []
+  allow-protected-removal: false
+
+  chats:
+    - id: 2000000001
+      mode: manage
+    - id: 2000000002
+      mode: events
+    - id: 2000000003
+      mode: support
+
+  cmd-policy:
+    mode: whitelist
+    allowed: ["say", "list"]
+    blocked: ["op", "deop", "stop", "reload"]
+    allowed-roles: ["chief"]
+
+support:
+  cooldown-seconds: 60
+  max-open-tickets-per-player: 3
+  auto-close-on-reply: false

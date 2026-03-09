@@ -45,7 +45,7 @@ artifacts {
 }
 
 signing {
-    required { releaseBuild && gradle.taskGraph.hasTask("publishing") }
+    required = releaseBuild && gradle.taskGraph.hasTask("publishing")
     useGpgCmd()
     sign publishing.publications
 }

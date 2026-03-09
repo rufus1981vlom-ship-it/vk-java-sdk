@@ -1,0 +1,38 @@
+vk:
+  token: "PUT_GROUP_BOT_TOKEN_HERE"
+  group-id: 0
+  api-version: "5.199"
+  command-chat-id: 0
+  event-chat-id: 0
+
+  admins:
+    "123456789":
+      nickname: "pommesshooter"
+      level: 4
+
+  # Отдельные привязки ников для команды !ноунэйм (не обязательно админы)
+  nicknames:
+    "123456789": "pommesshooter"
+
+  # Бан-лист участников беседы
+  chat-bans: {}
+
+  # Гибкая политика для !cmd
+  command-policy:
+    enabled: true
+    mode: "blacklist" # blacklist | whitelist
+    blacklist: ["op", "deop", "reload", "stop"]
+    whitelist: ["say", "list", "ban", "kick", "lp user", "whitelist"]
+
+  # Гибкие права доступа к командам бота по уровням (1..4)
+  bot-command-access:
+    admins: 2
+    admin_set: 3
+    admin_level: 3
+    admin_remove: 3
+    rnick: 2
+    chat_kick: 2
+    chat_ban: 3
+    chat_unban: 3
+    noname: 2
+    cmd: 1
