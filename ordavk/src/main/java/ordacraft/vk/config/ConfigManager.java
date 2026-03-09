@@ -1,6 +1,6 @@
 package ordacraft.vk.config;
 
-import org.bukkit.configuration.ConfigurationSection;
+import ordacraft.vk.admin.Role;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.*;
@@ -30,6 +30,15 @@ public class ConfigManager {
         Set<String> allowedRoles = normalize(cfg.getStringList("vk.cmd-policy.allowed-roles"));
         Set<Long> protectedUsers = cfg.getLongList("vk.protected-users").stream().collect(Collectors.toSet());
 
+        Map<String, Role> matrix = defaultMatrix();
+        if (cfg.isConfigurationSection("permissions.command-min-role")) {
+            for (String key : cfg.getConfigurationSection("permissions.command-min-role").getKeys(false)) {
+                try {
+                    matrix.put(key, Role.fromString(cfg.getString("permissions.command-min-role." + key, "CHIEF")));
+                } catch (Exception ignored) {}
+            }
+        }
+
         settings = new PluginSettings(
                 cfg.getString("vk.token", ""),
                 cfg.getInt("vk.group-id", 0),
@@ -42,12 +51,32 @@ public class ConfigManager {
                 cfg.getInt("support.max-open-tickets-per-player", 3),
                 cfg.getBoolean("support.auto-close-on-reply", false),
                 protectedUsers,
-                cfg.getBoolean("vk.allow-protected-removal", false)
+                cfg.getBoolean("vk.allow-protected-removal", false),
+                cfg.getString("general.language", "ru"),
+                matrix
         );
     }
 
     private Set<String> normalize(List<String> input){
         return input.stream().map(s->s.toLowerCase(Locale.ROOT).trim()).filter(s->!s.isEmpty()).collect(Collectors.toSet());
+    }
+
+    private Map<String, Role> defaultMatrix() {
+        Map<String, Role> map = new HashMap<>();
+        map.put("manage.help", Role.HELPER);
+        map.put("manage.admins", Role.HELPER);
+        map.put("manage.kick", Role.MODER);
+        map.put("manage.mute", Role.MODER);
+        map.put("manage.ban", Role.MODER);
+        map.put("manage.admin.remove", Role.ADMIN);
+        map.put("manage.cmd", Role.CHIEF);
+        map.put("manage.vk.kick", Role.STAFF);
+
+        map.put("support.list", Role.HELPER);
+        map.put("support.info", Role.HELPER);
+        map.put("support.close", Role.MODER);
+        map.put("support.reply", Role.HELPER);
+        return map;
     }
 
     public PluginSettings settings(){ return settings; }

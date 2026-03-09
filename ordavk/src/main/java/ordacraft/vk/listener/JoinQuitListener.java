@@ -1,22 +1,28 @@
 package ordacraft.vk.listener;
 
 import ordacraft.vk.service.EventRelayService;
+import ordacraft.vk.service.LocalizationService;
 import ordacraft.vk.support.PendingReplyService;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
+import java.util.Map;
+
 public class JoinQuitListener implements Listener {
     private final EventRelayService relay;
     private final PendingReplyService pending;
+    private final LocalizationService i18n;
 
-    public JoinQuitListener(EventRelayService relay, PendingReplyService pending) { this.relay = relay; this.pending = pending; }
+    public JoinQuitListener(EventRelayService relay, PendingReplyService pending, LocalizationService i18n) {
+        this.relay = relay; this.pending = pending; this.i18n = i18n;
+    }
 
     @EventHandler public void join(PlayerJoinEvent e){
         relay.event("🟢 Join: " + e.getPlayer().getName());
         pending.take(e.getPlayer().getUniqueId()).ifPresent(pr -> {
-            e.getPlayer().sendMessage("[Support] You have a stored reply for ticket #" + pr.ticketId() + ": " + pr.replyText());
+            e.getPlayer().sendMessage(i18n.tr("player.support.offline_reply", Map.of("id", String.valueOf(pr.ticketId()), "text", pr.replyText())));
             relay.event("📬 Offline reply for ticket #" + pr.ticketId() + " delivered to " + e.getPlayer().getName());
         });
     }

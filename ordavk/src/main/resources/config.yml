@@ -1,3 +1,7 @@
+general:
+  # ru | en | kk
+  language: ru
+
 vk:
   token: ""
   group-id: 0
@@ -24,3 +28,20 @@ support:
   cooldown-seconds: 60
   max-open-tickets-per-player: 3
   auto-close-on-reply: false
+
+permissions:
+  # гибкая таблица минимальных ролей для команд
+  command-min-role:
+    manage.help: helper
+    manage.admins: helper
+    manage.kick: moder
+    manage.mute: moder
+    manage.ban: moder
+    manage.admin.remove: admin
+    manage.cmd: chief
+    manage.vk.kick: staff
+
+    support.list: helper
+    support.info: helper
+    support.close: moder
+    support.reply: helper

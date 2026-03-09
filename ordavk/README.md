@@ -110,3 +110,29 @@ mvn -f ordavk/pom.xml clean package
 
 После успешной сборки jar будет в:
 `ordavk/target/ordavk-1.0.0.jar`
+
+
+## Локализация (RU/EN/KK)
+- Поддерживаются языки: `ru`, `en`, `kk`.
+- Язык задаётся в `config.yml`:
+  - `general.language: ru` (по умолчанию русский)
+- Файлы переводов:
+  - `src/main/resources/i18n/messages_ru.yml`
+  - `src/main/resources/i18n/messages_en.yml`
+  - `src/main/resources/i18n/messages_kk.yml`
+
+## Гибкая таблица прав
+В `config.yml` есть блок `permissions.command-min-role`, где задаётся минимальная роль для каждой команды.
+
+Пример:
+```yml
+permissions:
+  command-min-role:
+    manage.help: helper
+    manage.kick: moder
+    manage.admin.remove: admin
+    manage.cmd: chief
+    support.reply: helper
+```
+
+Таким образом, права можно менять без изменения кода.
