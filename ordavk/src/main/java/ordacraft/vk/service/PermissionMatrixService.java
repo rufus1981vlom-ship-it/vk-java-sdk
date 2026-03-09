@@ -2,6 +2,7 @@ package ordacraft.vk.service;
 
 import ordacraft.vk.admin.Role;
 
+import java.util.Locale;
 import java.util.Map;
 
 public class PermissionMatrixService {
@@ -12,7 +13,19 @@ public class PermissionMatrixService {
     }
 
     public boolean allowed(Role actor, String commandKey) {
-        Role min = minRoleByCommand.getOrDefault(commandKey, Role.CHIEF);
+        if (actor == null || commandKey == null || commandKey.isBlank()) {
+            return false;
+        }
+
+        Role min = minRoleByCommand.get(commandKey);
+        if (min == null) {
+            min = minRoleByCommand.get(commandKey.toLowerCase(Locale.ROOT));
+        }
+        if (min == null) {
+            min = Role.CHIEF;
+        }
+
+        // Требуется минимум указанной роли: ADMIN допускает ADMIN/STAFF/CHIEF и т.д.
         return actor.ordinal() >= min.ordinal();
     }
 }
