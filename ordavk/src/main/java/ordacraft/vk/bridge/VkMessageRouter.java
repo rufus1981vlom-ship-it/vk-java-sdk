@@ -194,8 +194,8 @@ public class VkMessageRouter {
             }
             admins.upsert(vkId, p[3], targetRole);
             admins.save();
-            reply(msg.peerId(), i18n.tr("manage.admin_added", Map.of("vk", String.valueOf(vkId), "nick", p[3], "role", targetRole.name().toLowerCase())));
             relay.event("🛡 admin_add actor=" + actor.vkId() + " target=" + vkId + " nick=" + p[3] + " role=" + targetRole.name().toLowerCase());
+            reply(msg.peerId(), i18n.tr("manage.admin_added", Map.of("vk", String.valueOf(vkId), "nick", p[3], "role", targetRole.name().toLowerCase())));
             return;
         }
 
@@ -221,8 +221,8 @@ public class VkMessageRouter {
             }
             admins.upsert(vkId, existing.get().mcNick(), targetRole);
             admins.save();
-            reply(msg.peerId(), i18n.tr("manage.admin_set", Map.of("vk", String.valueOf(vkId), "role", targetRole.name().toLowerCase())));
             relay.event("🛡 admin_set actor=" + actor.vkId() + " target=" + vkId + " role=" + targetRole.name().toLowerCase());
+            reply(msg.peerId(), i18n.tr("manage.admin_set", Map.of("vk", String.valueOf(vkId), "role", targetRole.name().toLowerCase())));
             return;
         }
 
@@ -298,6 +298,13 @@ public class VkMessageRouter {
             admins.remove(targetVkId);
             admins.save();
 
+            relay.event("🛡 admin_remove actor=" + actor.vkId()
+                    + " target=" + targetVkId
+                    + " nick=" + emptyAsDash(nick)
+                    + " lp_sent=" + lpSent
+                    + " chats_removed=" + stats.removed()
+                    + " chats_failed=" + stats.failed());
+
             reply(msg.peerId(), i18n.tr("manage.admin_removed.summary", Map.of(
                     "vk", String.valueOf(targetVkId),
                     "nick", emptyAsDash(nick),
@@ -308,13 +315,6 @@ public class VkMessageRouter {
                     "no_permissions", String.valueOf(stats.noPermissions()),
                     "api_errors", String.valueOf(stats.apiErrors())
             )));
-
-            relay.event("🛡 admin_remove actor=" + actor.vkId()
-                    + " target=" + targetVkId
-                    + " nick=" + emptyAsDash(nick)
-                    + " lp_sent=" + lpSent
-                    + " chats_removed=" + stats.removed()
-                    + " chats_failed=" + stats.failed());
             return;
         }
 
