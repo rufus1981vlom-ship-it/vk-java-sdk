@@ -29,13 +29,13 @@
   <build>
     <plugins>
       <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.2.5</version></plugin>
-          <plugin>
+      <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-enforcer-plugin</artifactId>
         <version>3.5.0</version>
         <executions>
           <execution>
-            <id>enforce-java</id>
+            <id>enforce-java-and-maven</id>
             <goals><goal>enforce</goal></goals>
             <configuration>
               <rules>
@@ -43,11 +43,15 @@
                   <version>[17,)</version>
                   <message>OrdaVK requires JDK 17+ for build and runtime.</message>
                 </requireJavaVersion>
+                <requireMavenVersion>
+                  <version>[3.9,4.0.0)</version>
+                  <message>OrdaVK currently requires Maven 3.x (use ./mvnw) because Maven 4 fails resolving Paper snapshot metadata in some environments.</message>
+                </requireMavenVersion>
               </rules>
             </configuration>
           </execution>
         </executions>
       </plugin>
-</plugins>
+    </plugins>
   </build>
 </project>

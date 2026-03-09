@@ -4,8 +4,8 @@
 
 ## Сборка
 ```bash
-mvn -f ordavk/pom.xml test
-mvn -f ordavk/pom.xml package
+./ordavk/mvnw -f ordavk/pom.xml test
+./ordavk/mvnw -f ordavk/pom.xml package
 ```
 
 ## Что делает плагин
@@ -85,18 +85,19 @@ mvn -f ordavk/pom.xml package
 - `vk.allow-protected-removal`
 
 
-## Решение ошибки Java 11 / Maven 4
+## Решение ошибки Java 11 / Maven 4 (и Paper SNAPSHOT)
 Если видите ошибку:
 `Apache Maven 4.x requires Java 17 or newer to run` — это не ошибка кода плагина, а версия JDK в окружении.
 
 ### Нужно минимум:
 - JDK 17+
+- Maven 3.9.x (в проект добавлен `./ordavk/mvnw`)
 - `JAVA_HOME` указывает на JDK 17+
 
 Проверка:
 ```bash
 java -version
-mvn -version
+./ordavk/mvnw -version
 ```
 
 Обе команды должны показывать Java 17+.
@@ -105,11 +106,14 @@ mvn -version
 ```bash
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 export PATH="$JAVA_HOME/bin:$PATH"
-mvn -f ordavk/pom.xml clean package
+./ordavk/mvnw -f ordavk/pom.xml clean package
 ```
 
 После успешной сборки jar будет в:
 `ordavk/target/ordavk-1.0.0.jar`
+
+
+> Почему так: в части окружений Maven 4 некорректно резолвит `paper-api` SNAPSHOT (ошибки вида `Prefix ... NOT allowed` или `403`), поэтому сборка зафиксирована на Maven 3 через wrapper.
 
 
 ## Локализация (RU/EN/KK)
