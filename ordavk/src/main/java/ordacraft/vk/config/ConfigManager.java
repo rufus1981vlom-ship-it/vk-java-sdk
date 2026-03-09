@@ -64,13 +64,18 @@ public class ConfigManager {
     private Map<String, Role> defaultMatrix() {
         Map<String, Role> map = new HashMap<>();
         map.put("manage.help", Role.HELPER);
-        map.put("manage.admins", Role.HELPER);
+        map.put("manage.online", Role.HELPER);
+        map.put("manage.status", Role.HELPER);
+        map.put("manage.check", Role.HELPER);
         map.put("manage.kick", Role.MODER);
         map.put("manage.mute", Role.MODER);
         map.put("manage.ban", Role.MODER);
+        map.put("manage.admins", Role.ADMIN);
+        map.put("manage.admin.info", Role.ADMIN);
+        map.put("manage.admin.add", Role.ADMIN);
+        map.put("manage.admin.set", Role.ADMIN);
         map.put("manage.admin.remove", Role.ADMIN);
         map.put("manage.cmd", Role.CHIEF);
-        map.put("manage.vk.kick", Role.STAFF);
 
         map.put("support.list", Role.HELPER);
         map.put("support.info", Role.HELPER);

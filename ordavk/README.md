@@ -24,37 +24,26 @@
 
 ## Команды VK (чат manage)
 
-### 1) Информация
-- `!help` — краткий ответ бота.
-- `!admins` — список VK-админов и их ролей.
-
-### 2) Наказания игроков
-- `!kick <player> <reason>`
-  - Отправляет в консоль: `kick <player> <reason>`
-- `!mute <player> <time> <reason>`
-  - Отправляет в консоль: `tempmute <player> <time> <reason>`
-- `!ban <player> [time] <reason>`
-  - Если `time` имеет формат `10m/2h/7d`, отправляется: `tempban <player> <time> <reason>`
-  - Иначе отправляется: `ban <player> <reason>`
-
-### 3) Управление VK-админами
+- `!help`
+- `!online`
+- `!status`
+- `!check <ник>`
+- `!kick <ник> <причина>`
+- `!mute <ник> <время> <причина>`
+- `!ban <ник> [время] <причина>`
+- `!admins`
+- `!admin info <vk_id>`
+- `!admin add <vk_id> <ник> <роль>`
+- `!admin set <vk_id> <роль>`
 - `!admin remove <vk_id>`
-  - Удаляет права VK-админа.
-  - **Обязательно** отправляет в консоль команду для связанного ника:
-    `lp user <MC_NICK> parent set default`
-  - Пример:
-    - `!admin remove 142232`
-    - если `142232 -> Steve`, будет отправлено:
-      `lp user Steve parent set default`
+- `!cmd <команда>`
 
-### 4) Raw console bridge
-- `!cmd <server command>`
-  - Выполняет команду в консоли сервера (с проверкой policy из `config.yml`).
-
-### 5) VK governance
-- `!vk kick <vk_id> <reason>`
-  - Пытается удалить пользователя из всех известных VK-чатов бота.
-  - Возвращает сводку по успешным/неуспешным попыткам.
+`!admin remove` выполняет одним вызовом:
+- проверку прав и иерархии ролей,
+- сброс LP-группы (`lp user <nick> parent set default`) при наличии ника,
+- попытку удалить пользователя из всех известных VK-бесед,
+- удаление записи из `admins.yml` и сохранение,
+- итоговый подробный отчёт в manage-чате и событие в events-чате.
 
 ## Команды VK (чат support)
 - `!list` — список открытых тикетов.

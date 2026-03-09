@@ -33,15 +33,23 @@ permissions:
   # гибкая таблица минимальных ролей для команд
   command-min-role:
     manage.help: helper
-    manage.admins: helper
+    manage.online: helper
+    manage.status: helper
+    manage.check: helper
+
     manage.kick: moder
     manage.mute: moder
     manage.ban: moder
+
+    manage.admins: admin
+    manage.admin.info: admin
+    manage.admin.add: admin
+    manage.admin.set: admin
     manage.admin.remove: admin
+
     manage.cmd: chief
-    manage.vk.kick: staff
 
     support.list: helper
     support.info: helper
-    support.close: moder
+    support.close: helper
     support.reply: helper

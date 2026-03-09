@@ -43,11 +43,11 @@ public class OrdaVKPlugin extends JavaPlugin {
         VkApiClient vkApiClient = new VkApiClient(config.settings().token(), config.settings().apiVersion());
         EventRelayService relay = new EventRelayService(config.settings(), vkApiClient);
         ConsoleDispatchService console = new ConsoleDispatchService(this);
-        GovernanceService governance = new GovernanceService(config.settings(), vkApiClient, adminRegistry);
+        GovernanceService governance = new GovernanceService(config.settings(), vkApiClient);
         CommandPolicyService policy = new CommandPolicyService(config.settings());
         VkMessageRouter router = new VkMessageRouter(config.settings(), vkApiClient, adminRegistry, ticketService, pendingReplyService, policy, console, governance, relay, i18n, matrix);
 
-        poll = new VkLongPollService(router::onMessage);
+        poll = new VkLongPollService(vkApiClient, config.settings().groupId(), config.settings().pollInterval(), router::onMessage);
         poll.start();
 
         var ticketsCommand = new TicketPlayerCommands(ticketService, config.settings().supportCooldown(), config.settings().supportMaxOpen(), i18n,
