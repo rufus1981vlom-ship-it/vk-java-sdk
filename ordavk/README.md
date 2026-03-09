@@ -83,3 +83,30 @@ mvn -f ordavk/pom.xml package
 - `vk.cmd-policy.allowed-roles`
 - `vk.protected-users`
 - `vk.allow-protected-removal`
+
+
+## Решение ошибки Java 11 / Maven 4
+Если видите ошибку:
+`Apache Maven 4.x requires Java 17 or newer to run` — это не ошибка кода плагина, а версия JDK в окружении.
+
+### Нужно минимум:
+- JDK 17+
+- `JAVA_HOME` указывает на JDK 17+
+
+Проверка:
+```bash
+java -version
+mvn -version
+```
+
+Обе команды должны показывать Java 17+.
+
+Пример для Linux:
+```bash
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export PATH="$JAVA_HOME/bin:$PATH"
+mvn -f ordavk/pom.xml clean package
+```
+
+После успешной сборки jar будет в:
+`ordavk/target/ordavk-1.0.0.jar`
