@@ -79,7 +79,7 @@ public class ConfigManager {
 
         map.put("support.list", Role.HELPER);
         map.put("support.info", Role.HELPER);
-        map.put("support.close", Role.MODER);
+        map.put("support.close", Role.HELPER);
         map.put("support.reply", Role.HELPER);
         return map;
     }
