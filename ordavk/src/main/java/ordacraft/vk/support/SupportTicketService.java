@@ -26,10 +26,18 @@ public class SupportTicketService {
             try{
                 Map<String,Object> v=(Map<String,Object>)e.getValue();
                 int id=Integer.parseInt(e.getKey().toString());
-                tickets.put(id,new SupportTicket(id, TicketType.valueOf(String.valueOf(v.get("type"))), UUID.fromString(String.valueOf(v.get("playerUuid"))),
-                        String.valueOf(v.get("playerName")), String.valueOf(v.getOrDefault("targetPlayerName","")), String.valueOf(v.get("text")),
-                        ((Number)v.getOrDefault("createdAt",0)).longValue(), TicketStatus.valueOf(String.valueOf(v.getOrDefault("status","OPEN"))),
-                        v.get("responderVkId") == null ? null : ((Number)v.get("responderVkId")).longValue(), Boolean.parseBoolean(String.valueOf(v.getOrDefault("closed", false))));
+                tickets.put(id, new SupportTicket(
+                        id,
+                        TicketType.valueOf(String.valueOf(v.get("type"))),
+                        UUID.fromString(String.valueOf(v.get("playerUuid"))),
+                        String.valueOf(v.get("playerName")),
+                        String.valueOf(v.getOrDefault("targetPlayerName", "")),
+                        String.valueOf(v.get("text")),
+                        ((Number) v.getOrDefault("createdAt", 0)).longValue(),
+                        TicketStatus.valueOf(String.valueOf(v.getOrDefault("status", "OPEN"))),
+                        v.get("responderVkId") == null ? null : ((Number) v.get("responderVkId")).longValue(),
+                        Boolean.parseBoolean(String.valueOf(v.getOrDefault("closed", false)))
+                ));
             }catch(Exception ignored){}
         }
     }
