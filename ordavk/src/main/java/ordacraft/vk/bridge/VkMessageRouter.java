@@ -48,7 +48,7 @@ public class VkMessageRouter {
     }
 
     private void handleManage(VkIncomingMessage msg, Role role) {
-        String t = msg.text().trim();
+        String t = msg.text() == null ? "" : msg.text().trim();
         if ("!help".equalsIgnoreCase(t)) { reply(msg.peerId(), "✅ Done"); return; }
         if (role == null) { reply(msg.peerId(), "❌ Not enough permission"); return; }
 
@@ -78,6 +78,7 @@ public class VkMessageRouter {
             try { targetVkId = Long.parseLong(p[2]); } catch (NumberFormatException e) { reply(msg.peerId(), "❌ vk_id must be numeric"); return; }
             var target = admins.find(targetVkId);
             if (target.isEmpty()) { reply(msg.peerId(), "❌ Admin not found"); return; }
+            if (!role.higherThan(target.get().role())) { reply(msg.peerId(), "❌ Target has equal or higher rank"); return; }
             if (target.get().mcNick() == null || target.get().mcNick().isBlank()) { reply(msg.peerId(), "❌ Target admin has no linked Minecraft nickname"); return; }
             console.dispatch("lp user " + target.get().mcNick() + " parent set default");
             admins.remove(targetVkId);
@@ -87,15 +88,23 @@ public class VkMessageRouter {
             return;
         }
         if (t.startsWith("!cmd ")) {
-            String raw = t.substring(5);
+            String raw = t.substring(5).trim();
+            if (raw.isEmpty()) { reply(msg.peerId(), "❌ Empty command"); return; }
             if (!cmdPolicy.canUseRaw(role)) { reply(msg.peerId(), "❌ Not enough permission"); return; }
             if (!cmdPolicy.allows(raw)) { reply(msg.peerId(), "❌ This command is not allowed by policy"); return; }
             console.dispatch(raw); reply(msg.peerId(), "✅ Command executed: " + raw); relay.event("⚠ Dangerous cmd by VK: " + raw); return;
         }
         if (t.startsWith("!vk kick ")) {
             String[] p=t.split("\\s+",4); if(p.length<4){ reply(msg.peerId(),"❌ Usage: !vk kick <vk_id> <reason>"); return; }
-            reply(msg.peerId(), governance.kickEverywhere(role, Long.parseLong(p[2]), p[3])); return;
+            try {
+                reply(msg.peerId(), governance.kickEverywhere(role, Long.parseLong(p[2]), p[3]));
+            } catch (NumberFormatException e) {
+                reply(msg.peerId(), "❌ vk_id must be numeric");
+            }
+            return;
         }
+
+        reply(msg.peerId(), "❌ Unknown manage command");
     }
 
     private void handleSupport(VkIncomingMessage msg, Role role) {
@@ -120,6 +129,7 @@ public class VkMessageRouter {
                         reply(msg.peerId(), "💾 Reply saved.");
                     }
                 }, () -> reply(msg.peerId(), "Not found"));
+                default -> reply(msg.peerId(), "❌ Unknown support command");
             }
         } catch (Exception e) {
             reply(msg.peerId(), "❌ Malformed support command");
