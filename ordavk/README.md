@@ -1,24 +1,105 @@
 # OrdaVK Manager
 
-`OrdaVK` — плагин для Paper 1.20.4, который связывает сервер Minecraft и VK-чаты.
+OrdaVK Manager — VK-native staff management system для Paper-серверов Minecraft (1.20+).
 
-## Сборка
-```bash
-./ordavk/mvnw -f ordavk/pom.xml test
-./ordavk/mvnw -f ordavk/pom.xml package
-```
+Плагин объединяет:
+- **Management Bridge** (управление сервером через VK),
+- **Staff Management** (роли/иерархия/админы),
+- **Support Desk** (тикеты и ответы игрокам),
+- **Audit & Security** (events-лог опасных действий),
+- **Governance** (снятие staff + очистка доступов),
+- **Notification Relay** (события сервера в VK).
 
+---
 
-## Management модули
-- **Management Bridge**: VK manage-команды и command bridge.
-- **Staff Management**: роли staff, bootstrap первого администратора, управление правами.
-- **Support Desk**: тикеты `/helpop`, `/report`, команды `!list/!info/!close/!r`.
-- **Audit & Security**: events-логирование наказаний, dangerous/raw и LP group-команд.
-- **Governance**: снятие администраторов и удаление из бесед.
-- **Analytics**: базовый фундамент для метрик staff-действий.
+## 1) Возможности (актуально)
 
-## Bootstrap первого администратора
-Только из консоли сервера:
+### Management Bridge (VK manage-чат)
+- `!help`
+- `!online`
+- `!status`
+- `!check <nick>`
+- `!admins`
+- `!admin info <vk_id>`
+- `!admin add <vk_id> <nick> <role>`
+- `!admin set <vk_id> <role>`
+- `!admin remove <vk_id>`
+- `!kick <nick> <reason>`
+- `!mute <nick> <time> <reason>`
+- `!ban <nick> [time] <reason>`
+- `!cmd <raw_command>`
+
+### Support Desk
+Игровые команды:
+- `/helpop <question>`
+- `/report <player> <reason>`
+
+VK support-чат:
+- `!list`
+- `!info <id>`
+- `!close <id>`
+- `!r <id> <reply>`
+
+Поддерживается offline-ответ:
+- если игрок оффлайн, ответ кладётся в `pending-replies.yml`,
+- при следующем входе игрок получает ответ **один раз**,
+- после доставки запись удаляется.
+
+### Staff Management
+- Иерархия ролей: `helper < moder < admin < staff < chief`.
+- `!admin add/set/remove` учитывают ролевую иерархию.
+- Bootstrap первого администратора через консоль.
+
+### Governance
+`!admin remove <vk_id>` выполняет:
+1. удаление из `admins.yml` + сохранение,
+2. `lp user <nick> parent set default` (если nick есть),
+3. `removeUserFromAllChats(targetVkId)` (в любом случае),
+4. summary-ответ в manage-чате,
+5. отдельный audit/event лог в events-чат.
+
+### Audit & Security
+Events-чат получает:
+- join/quit события,
+- структурированные логи наказаний (`kick`, `tempmute`, `ban`, `tempban`),
+- логи LP group-команд (`parent set/add/remove`),
+- логи dangerous raw-команд из `!cmd`,
+- лог `!admin remove`.
+
+Есть защита от дублей:
+- если событие уже залогировано структурированно (например LP set/add/remove), raw-дубль не отправляется.
+
+### Dangerous command recognition
+Нормализуются команды с `/` и без `/`:
+- `/lp ...` == `lp ...`
+- `/luckperms ...` == `luckperms ...`
+
+Минимальный dangerous-list:
+- `kick`, `mute`, `tempmute`, `ban`, `tempban`, `pardon`, `unban`,
+- `lp`, `luckperms`, `op`, `deop`, `whitelist`,
+- `stop`, `restart`, `reload`,
+- `minecraft:stop`, `minecraft:reload`, `minecraft:kick`, `minecraft:ban`, `minecraft:pardon`.
+
+---
+
+## 2) Команды плагина (Minecraft)
+
+### `/ordavk reload`
+Доступ:
+- из консоли: `ordavk reload`
+- в игре: `/ordavk reload` (permission `ordavk.reload`, по умолчанию OP)
+
+Что делает reload:
+- перечитывает `config.yml`,
+- перечитывает `admins.yml`, `tickets.yml`, `pending-replies.yml`,
+- перечитывает локализацию,
+- пересобирает runtime-сервисы,
+- останавливает текущий VK long poll,
+- запускает новый long poll,
+- предотвращает дублирование polling-потоков.
+
+### Bootstrap первого администратора
+Только из консоли:
 ```bash
 ordavk bootstrap <vk_id> <mc_nick> <role>
 ```
@@ -27,130 +108,83 @@ ordavk bootstrap <vk_id> <mc_nick> <role>
 ordavk bootstrap 1103524939 pommesshooter chief
 ```
 
-## Reload без рестарта
-- `/ordavk reload` (для OP/perm `ordavk.reload`)
-- `ordavk reload` (из консоли)
+Поведение:
+- создаёт/обновляет запись в `admins.yml`,
+- сразу сохраняет изменения,
+- роль валидируется (`helper|moder|admin|staff|chief`).
 
-Reload перезагружает конфиг/хранилища и безопасно перезапускает VK long poll без дублирования потоков.
+---
 
-## Что делает плагин
-- Принимает управляющие команды из VK-чата `manage`.
-- Принимает команды поддержки из VK-чата `support`.
-- Отправляет события сервера в VK-чаты режима `events`.
-- Создаёт тикеты из игры через `/helpop` и `/report`.
-- Умеет хранить ответ саппорта для оффлайн-игрока и доставлять его один раз при входе.
+## 3) Конфигурация
 
-## Режимы VK-чатов
-Настраиваются в `config.yml`:
-- `manage` — чат управления (команды админов).
-- `support` — чат поддержки (работа с тикетами).
-- `events` — только лог-сообщения от плагина.
-- `ignore` — сообщения из чата игнорируются.
+Главный файл: `src/main/resources/config.yml` (копируется в папку плагина).
 
-## Команды VK (чат manage)
+Ключевые секции:
+- VK токен и group-id,
+- список чатов и их режим (`manage/support/events/ignore`),
+- command policy (`whitelist/blacklist` + списки),
+- protection-настройки,
+- таблица минимальных ролей для команд (`permissions.command-min-role`),
+- dangerous command settings.
 
-- `!help`
-- `!online`
-- `!status`
-- `!check <ник>`
-- `!kick <ник> <причина>`
-- `!mute <ник> <время> <причина>`
-- `!ban <ник> [время] <причина>`
-- `!admins`
-- `!admin info <vk_id>`
-- `!admin add <vk_id> <ник> <роль>`
-- `!admin set <vk_id> <роль>`
-- `!admin remove <vk_id>`
-- `!cmd <команда>`
+### Режимы чатов
+- `manage` — staff/management команды,
+- `support` — тикеты/ответы,
+- `events` — только аудит и нотификации,
+- `ignore` — сообщения игнорируются.
 
-`!admin remove` выполняет одним вызовом:
-- проверку прав и иерархии ролей,
-- сброс LP-группы (`lp user <nick> parent set default`) при наличии ника,
-- попытку удалить пользователя из всех известных VK-бесед,
-- удаление записи из `admins.yml` и сохранение,
-- итоговый подробный отчёт в manage-чате и событие в events-чате.
+---
 
-## Команды VK (чат support)
-- `!list` — список открытых тикетов.
-- `!info <id>` — информация по тикету.
-- `!r <id> <reply>` — ответ игроку.
-  - Если игрок онлайн — отправляет сразу.
-  - Если оффлайн — сохраняет и доставляет при следующем входе (один раз).
-- `!close <id>` — закрыть тикет.
+## 4) Хранилища данных
 
-## Команды в игре
-- `/helpop <question>` — создаёт тикет типа `QUESTION`.
-- `/report <player> <reason>` — создаёт тикет типа `REPORT`.
-
-Игрок получает подтверждение с номером тикета.
-
-## Файлы данных
-- `config.yml`
+Рабочие файлы:
 - `admins.yml`
 - `tickets.yml`
 - `pending-replies.yml`
 - `audit-log.yml`
+- `config.yml`
 
-## Ключевые настройки безопасности
-- `vk.cmd-policy.mode`: `whitelist` или `blacklist`
-- `vk.cmd-policy.allowed` / `vk.cmd-policy.blocked`
-- `vk.cmd-policy.allowed-roles`
-- `vk.protected-users`
-- `vk.allow-protected-removal`
+Локализация:
+- `i18n/messages_ru.yml`
+- `i18n/messages_en.yml`
+- `i18n/messages_kk.yml`
 
+---
 
-## Решение ошибки Java 11 / Maven 4 (и Paper SNAPSHOT)
-Если видите ошибку:
-`Apache Maven 4.x requires Java 17 or newer to run` — это не ошибка кода плагина, а версия JDK в окружении.
+## 5) Сборка и тесты
 
-### Нужно минимум:
-- JDK 17+
-- Maven 3.9.x (в проект добавлен `./ordavk/mvnw`)
-- `JAVA_HOME` указывает на JDK 17+
-
-Проверка:
+Из корня репозитория:
 ```bash
-java -version
-./ordavk/mvnw -version
-```
-
-Обе команды должны показывать Java 17+.
-
-Пример для Linux:
-```bash
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-export PATH="$JAVA_HOME/bin:$PATH"
+./ordavk/mvnw -f ordavk/pom.xml test
 ./ordavk/mvnw -f ordavk/pom.xml clean package
 ```
 
-После успешной сборки jar будет в:
-`ordavk/target/ordavk-1.0.0.jar`
-
-
-> Почему так: в части окружений Maven 4 некорректно резолвит `paper-api` SNAPSHOT (ошибки вида `Prefix ... NOT allowed` или `403`), поэтому сборка зафиксирована на Maven 3 через wrapper.
-
-
-## Локализация (RU/EN/KK)
-- Поддерживаются языки: `ru`, `en`, `kk`.
-- Язык задаётся в `config.yml`:
-  - `general.language: ru` (по умолчанию русский)
-- Файлы переводов:
-  - `src/main/resources/i18n/messages_ru.yml`
-  - `src/main/resources/i18n/messages_en.yml`
-  - `src/main/resources/i18n/messages_kk.yml`
-
-## Гибкая таблица прав
-В `config.yml` есть блок `permissions.command-min-role`, где задаётся минимальная роль для каждой команды.
-
-Пример:
-```yml
-permissions:
-  command-min-role:
-    manage.help: helper
-    manage.kick: moder
-    manage.admin.remove: admin
-    manage.cmd: chief
-    support.reply: helper
+Если в окружении требуется флаг для резолва репозиториев:
+```bash
+mvn -Daether.remoteRepositoryFilter.prefixes=false -f ordavk/pom.xml test
+mvn -Daether.remoteRepositoryFilter.prefixes=false -f ordavk/pom.xml clean package
 ```
 
-Таким образом, права можно менять без изменения кода.
+Готовый jar:
+- `ordavk/target/ordavk-1.0.0.jar`
+
+---
+
+## 6) Требования
+
+- Java 17+
+- Paper 1.20.4+ (api-version `1.20`, без NMS)
+- Валидный VK token + group id
+- Настроенные чаты для `manage/events/support`
+
+---
+
+## 7) Краткий сценарий запуска
+
+1. Скопировать jar в `plugins/`.
+2. Запустить сервер один раз для генерации конфигов.
+3. Заполнить `config.yml` (token, group-id, chat ids).
+4. Выполнить bootstrap первого администратора из консоли.
+5. Проверить `!help` и `!status` в manage-чате.
+6. Проверить `/helpop` или `/report` и команды `!list/!r` в support-чате.
+7. Проверить events-чат: наказания, LP-изменения, dangerous raw-команды.
