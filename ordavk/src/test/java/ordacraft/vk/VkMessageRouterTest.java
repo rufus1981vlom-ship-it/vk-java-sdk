@@ -157,6 +157,45 @@ class VkMessageRouterTest {
         assertTrue(admins.find(401L).isEmpty());
     }
 
+
+    @Test
+    void kickMuteBanAndAdminRemoveAreLoggedToEvents() {
+        VkMessageRouter router = newRouter();
+        admins.upsert(500L, "Bolat", Role.CHIEF);
+        admins.upsert(501L, "Steve", Role.HELPER);
+
+        router.onMessage(new VkIncomingMessage(2000000001L, 500L, "!kick Steve flood"));
+        router.onMessage(new VkIncomingMessage(2000000001L, 500L, "!mute Steve 30m мат"));
+        router.onMessage(new VkIncomingMessage(2000000001L, 500L, "!ban Steve 7d читы"));
+        router.onMessage(new VkIncomingMessage(2000000001L, 500L, "!ban Steve читы"));
+        router.onMessage(new VkIncomingMessage(2000000001L, 500L, "!admin remove 501"));
+
+        var events = api.events();
+        assertTrue(events.stream().anyMatch(m -> m.contains("Kick: Steve") && m.contains("Инициатор: Bolat")));
+        assertTrue(events.stream().anyMatch(m -> m.contains("TempMute: Steve") && m.contains("30m") && m.contains("Инициатор: Bolat")));
+        assertTrue(events.stream().anyMatch(m -> m.contains("TempBan: Steve") && m.contains("7d") && m.contains("Инициатор: Bolat")));
+        assertTrue(events.stream().anyMatch(m -> m.contains("Ban: Steve навсегда") && m.contains("Инициатор: Bolat")));
+        assertTrue(events.stream().anyMatch(m -> m.contains("Администратор снят: VK 501") && m.contains("Инициатор: 500")));
+    }
+
+    @Test
+    void rawDangerousAndLpGroupCommandsAreLoggedWithoutDuplicates() {
+        VkMessageRouter router = newRouter();
+        admins.upsert(600L, "Bolat", Role.CHIEF);
+
+        router.onMessage(new VkIncomingMessage(2000000001L, 600L, "!cmd lp user Steve parent set хан"));
+        router.onMessage(new VkIncomingMessage(2000000001L, 600L, "!cmd ban Steve grief"));
+        router.onMessage(new VkIncomingMessage(2000000001L, 600L, "!cmd say hello"));
+
+        var events = api.events();
+        assertTrue(events.stream().anyMatch(m -> m.contains("Группа: Steve -> хан") && m.contains("Инициатор: Bolat")));
+        assertTrue(events.stream().anyMatch(m -> m.contains("Raw command: ban Steve grief") && m.contains("Инициатор: Bolat")));
+        assertFalse(events.stream().anyMatch(m -> m.contains("Raw command: say hello")));
+
+        long rawLpCount = events.stream().filter(m -> m.contains("Raw command: lp user Steve parent set хан")).count();
+        assertEquals(0, rawLpCount);
+    }
+
     private VkMessageRouter newRouter() {
         SupportTicketService tickets = new SupportTicketService(new YamlFileStore(Path.of("/tmp/ordavk-tickets.yml")));
         PendingReplyService pending = new PendingReplyService(new YamlFileStore(Path.of("/tmp/ordavk-pending.yml")));
@@ -193,6 +232,8 @@ class VkMessageRouterTest {
     }
 
     private static final class TestVkApi extends VkApiClient {
+        private record Sent(long peerId, String message) {}
+        private final List<Sent> sent = new ArrayList<>();
         private final List<String> replies = new ArrayList<>();
         private final List<String> consoleCommands = new ArrayList<>();
 
@@ -202,6 +243,7 @@ class VkMessageRouterTest {
 
         @Override
         public void send(long peerId, String message) {
+            sent.add(new Sent(peerId, message));
             replies.add(message);
         }
 
@@ -209,6 +251,10 @@ class VkMessageRouterTest {
         public GovernanceService.RemoveStatus removeChatUserDetailed(long chatId, long memberId) {
             if (chatId % 2 == 0) return GovernanceService.RemoveStatus.REMOVED;
             return GovernanceService.RemoveStatus.NOT_FOUND;
+        }
+
+        private List<String> events() {
+            return sent.stream().filter(s -> s.peerId() == 2000000002L).map(s -> s.message()).toList();
         }
 
         private String lastReply() {

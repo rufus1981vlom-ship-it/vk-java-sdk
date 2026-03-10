@@ -5,6 +5,7 @@ import ordacraft.vk.admin.AdminRegistry;
 import ordacraft.vk.admin.Role;
 import ordacraft.vk.admin.RoleService;
 import ordacraft.vk.command.CommandPolicyService;
+import ordacraft.vk.command.DangerousCommandInspector;
 import ordacraft.vk.config.ChatMode;
 import ordacraft.vk.config.PluginSettings;
 import ordacraft.vk.governance.GovernanceService;
@@ -29,8 +30,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 public class VkMessageRouter {
     private final PluginSettings settings;
@@ -45,6 +44,7 @@ public class VkMessageRouter {
     private final LocalizationService i18n;
     private final PermissionMatrixService matrix;
     private final RoleService roleService = new RoleService();
+    private final DangerousCommandInspector dangerousInspector = new DangerousCommandInspector();
     private final long bootAt = System.currentTimeMillis();
 
     public VkMessageRouter(PluginSettings settings, VkApiClient api, AdminRegistry admins, SupportTicketService tickets,
@@ -234,7 +234,7 @@ public class VkMessageRouter {
                 return;
             }
             console.dispatch("kick " + p[1] + " " + p[2]);
-            relay.event("⛔ Kick: " + p[1] + " | Reason: " + p[2]);
+            relay.event("⛔ Kick: " + p[1] + " | Причина: " + p[2] + " | Инициатор: " + actorLabel(actor));
             reply(msg.peerId(), i18n.tr("common.done"));
             return;
         }
@@ -247,6 +247,7 @@ public class VkMessageRouter {
                 return;
             }
             console.dispatch("tempmute " + p[1] + " " + p[2] + " " + p[3]);
+            relay.event("🔇 TempMute: " + p[1] + " на " + p[2] + " | Причина: " + p[3] + " | Инициатор: " + actorLabel(actor));
             reply(msg.peerId(), i18n.tr("common.done"));
             return;
         }
@@ -260,8 +261,13 @@ public class VkMessageRouter {
             }
             String cmd = p.length == 3 ? BanCommandParser.toConsole(p[1], null, p[2]) : BanCommandParser.toConsole(p[1], p[2], p[3]);
             console.dispatch(cmd);
+            if (cmd.toLowerCase().startsWith("tempban ")) {
+                relay.event("⛔ TempBan: " + p[1] + " на " + p[2] + " | Причина: " + p[3] + " | Инициатор: " + actorLabel(actor));
+            } else {
+                String reason = p.length == 3 ? p[2] : (p[2] + " " + p[3]);
+                relay.event("⛔ Ban: " + p[1] + " навсегда | Причина: " + reason + " | Инициатор: " + actorLabel(actor));
+            }
             reply(msg.peerId(), i18n.tr("manage.executed", Map.of("cmd", cmd)));
-            relay.event("⛔ Ban: " + p[1]);
             return;
         }
 
@@ -298,12 +304,12 @@ public class VkMessageRouter {
             admins.remove(targetVkId);
             admins.save();
 
-            relay.event("🛡 admin_remove actor=" + actor.vkId()
-                    + " target=" + targetVkId
-                    + " nick=" + emptyAsDash(nick)
-                    + " lp_sent=" + lpSent
-                    + " chats_removed=" + stats.removed()
-                    + " chats_failed=" + stats.failed());
+            relay.event("🛡 Администратор снят: VK " + targetVkId
+                    + " | Ник: " + emptyAsDash(nick)
+                    + " | Группа сброшена: " + (lpSent ? i18n.tr("common.yes") : i18n.tr("common.no"))
+                    + " | Удалён из бесед: " + stats.removed()
+                    + " | Не удалось: " + stats.failed()
+                    + " | Инициатор: " + actor.vkId());
 
             reply(msg.peerId(), i18n.tr("manage.admin_removed.summary", Map.of(
                     "vk", String.valueOf(targetVkId),
@@ -334,8 +340,18 @@ public class VkMessageRouter {
                 return;
             }
             console.dispatch(raw);
+            String normalized = dangerousInspector.normalize(raw);
+            DangerousCommandInspector.LpGroupChange lp = dangerousInspector.parseLpGroupChange(normalized);
+            if (lp != null) {
+                switch (lp.action()) {
+                    case SET -> relay.event("👑 Группа: " + lp.user() + " -> " + lp.group() + " | Инициатор: " + actorLabel(actor));
+                    case ADD -> relay.event("👑 Группа добавлена: " + lp.user() + " + " + lp.group() + " | Инициатор: " + actorLabel(actor));
+                    case REMOVE -> relay.event("👑 Группа снята: " + lp.user() + " - " + lp.group() + " | Инициатор: " + actorLabel(actor));
+                }
+            } else if (dangerousInspector.isDangerous(normalized)) {
+                relay.event("⚠️ Raw command: " + normalized + " | Инициатор: " + actorLabel(actor));
+            }
             reply(msg.peerId(), i18n.tr("manage.executed", Map.of("cmd", raw)));
-            relay.event("⚠ Dangerous cmd by VK: " + raw);
             return;
         }
 
@@ -442,6 +458,13 @@ public class VkMessageRouter {
 
     private String emptyAsDash(String s) {
         return s == null || s.isBlank() ? "-" : s;
+    }
+
+
+    private String actorLabel(AdminRecord actor) {
+        if (actor == null) return "unknown";
+        if (actor.mcNick() != null && !actor.mcNick().isBlank()) return actor.mcNick();
+        return String.valueOf(actor.vkId());
     }
 
     private void reply(long peerId, String text) {
