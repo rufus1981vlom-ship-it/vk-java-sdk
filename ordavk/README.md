@@ -1,4 +1,4 @@
-# OrdaVK
+# OrdaVK Manager
 
 `OrdaVK` — плагин для Paper 1.20.4, который связывает сервер Minecraft и VK-чаты.
 
@@ -7,6 +7,31 @@
 ./ordavk/mvnw -f ordavk/pom.xml test
 ./ordavk/mvnw -f ordavk/pom.xml package
 ```
+
+
+## Management модули
+- **Management Bridge**: VK manage-команды и command bridge.
+- **Staff Management**: роли staff, bootstrap первого администратора, управление правами.
+- **Support Desk**: тикеты `/helpop`, `/report`, команды `!list/!info/!close/!r`.
+- **Audit & Security**: events-логирование наказаний, dangerous/raw и LP group-команд.
+- **Governance**: снятие администраторов и удаление из бесед.
+- **Analytics**: базовый фундамент для метрик staff-действий.
+
+## Bootstrap первого администратора
+Только из консоли сервера:
+```bash
+ordavk bootstrap <vk_id> <mc_nick> <role>
+```
+Пример:
+```bash
+ordavk bootstrap 1103524939 pommesshooter chief
+```
+
+## Reload без рестарта
+- `/ordavk reload` (для OP/perm `ordavk.reload`)
+- `ordavk reload` (из консоли)
+
+Reload перезагружает конфиг/хранилища и безопасно перезапускает VK long poll без дублирования потоков.
 
 ## Что делает плагин
 - Принимает управляющие команды из VK-чата `manage`.
