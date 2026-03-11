@@ -75,6 +75,7 @@ public class ConfigManager {
         map.put("manage.admin.add", Role.ADMIN);
         map.put("manage.admin.set", Role.ADMIN);
         map.put("manage.admin.remove", Role.ADMIN);
+        map.put("manage.admin.rname", Role.ADMIN);
         map.put("manage.cmd", Role.CHIEF);
 
         map.put("support.list", Role.HELPER);

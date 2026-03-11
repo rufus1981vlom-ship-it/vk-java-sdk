@@ -219,14 +219,14 @@ public class VkMessageRouter {
         if (t.startsWith("!admin set ")) {
             if (!require(role, "manage.admin.set", msg.peerId())) return;
             String[] p = t.split("\\s+");
-            if (p.length != 4 && p.length != 5) {
+            if (p.length != 5) {
                 reply(msg.peerId(), i18n.tr("manage.usage.admin_set"));
                 return;
             }
             Long vkId = parseVkId(p[2], msg.peerId());
             if (vkId == null) return;
-            String newNick = p.length == 5 ? p[3] : null;
-            Role targetRole = parseRole(p.length == 5 ? p[4] : p[3], msg.peerId());
+            String newNick = p[3];
+            Role targetRole = parseRole(p[4], msg.peerId());
             if (targetRole == null) return;
             Optional<AdminRecord> existing = admins.find(vkId);
             if (existing.isEmpty()) {
@@ -237,11 +237,37 @@ public class VkMessageRouter {
                 reply(msg.peerId(), i18n.tr("common.not_enough_permission"));
                 return;
             }
-            String nickToSave = (newNick == null || newNick.isBlank()) ? existing.get().mcNick() : newNick;
+            String nickToSave = newNick;
             admins.upsert(vkId, nickToSave, targetRole);
             admins.save();
             relay.event("🛡 admin_set actor=" + actor.vkId() + " target=" + vkId + " nick=" + nickToSave + " role=" + targetRole.name().toLowerCase());
             reply(msg.peerId(), i18n.tr("manage.admin_set", Map.of("vk", String.valueOf(vkId), "role", targetRole.name().toLowerCase())));
+            return;
+        }
+
+        if (t.startsWith("!rname ") || t.startsWith("!рнейм ")) {
+            if (!require(role, "manage.admin.rname", msg.peerId())) return;
+            String[] p = t.split("\\s+");
+            if (p.length != 3) {
+                reply(msg.peerId(), i18n.tr("manage.usage.admin_rname"));
+                return;
+            }
+            Long vkId = parseVkId(p[1], msg.peerId());
+            if (vkId == null) return;
+            String newNick = p[2];
+            Optional<AdminRecord> existing = admins.find(vkId);
+            if (existing.isEmpty()) {
+                reply(msg.peerId(), i18n.tr("manage.admin_not_found"));
+                return;
+            }
+            if (!roleService.canManage(role, existing.get().role())) {
+                reply(msg.peerId(), i18n.tr("manage.target_higher_or_equal"));
+                return;
+            }
+            admins.upsert(vkId, newNick, existing.get().role());
+            admins.save();
+            relay.event("🛡 admin_rname actor=" + actor.vkId() + " target=" + vkId + " nick=" + newNick);
+            reply(msg.peerId(), i18n.tr("manage.admin_renamed", Map.of("vk", String.valueOf(vkId), "nick", newNick)));
             return;
         }
 

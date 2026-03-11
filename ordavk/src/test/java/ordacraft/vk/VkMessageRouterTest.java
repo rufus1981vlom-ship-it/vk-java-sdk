@@ -57,6 +57,7 @@ class VkMessageRouterTest {
         matrix.put("manage.admin.add", Role.ADMIN);
         matrix.put("manage.admin.set", Role.ADMIN);
         matrix.put("manage.admin.remove", Role.ADMIN);
+        matrix.put("manage.admin.rname", Role.ADMIN);
         matrix.put("manage.cmd", Role.CHIEF);
         matrix.put("support.list", Role.HELPER);
         matrix.put("support.info", Role.HELPER);
@@ -187,7 +188,7 @@ class VkMessageRouterTest {
         assertTrue(api.lastReply().contains("VK ID: 200"));
         assertTrue(api.lastReply().contains("Роль: moder"));
 
-        router.onMessage(new VkIncomingMessage(2000000001L, 100L, "!admin set 200 admin"));
+        router.onMessage(new VkIncomingMessage(2000000001L, 100L, "!admin set 200 Steve admin"));
         assertEquals(Role.ADMIN, admins.find(200L).orElseThrow().role());
 
         router.onMessage(new VkIncomingMessage(2000000001L, 100L, "!admin remove 200"));
@@ -198,6 +199,28 @@ class VkMessageRouterTest {
         assertTrue(summary.contains("Не удалось:"));
         assertTrue(api.consoleCommands.stream().anyMatch(c -> c.equals("lp user Steve parent set default")));
         assertTrue(admins.find(200L).isEmpty());
+    }
+
+    @Test
+    void adminSetOldFormatIsRejected() {
+        VkMessageRouter router = newRouter();
+        admins.upsert(100L, "Chief", Role.CHIEF);
+        admins.upsert(200L, "Steve", Role.HELPER);
+
+        router.onMessage(new VkIncomingMessage(2000000001L, 100L, "!admin set 200 admin"));
+        assertTrue(api.lastReply().contains("!admin set <vk_id> <nick> <role>"));
+        assertEquals(Role.HELPER, admins.find(200L).orElseThrow().role());
+    }
+
+    @Test
+    void rnameRenamesAdminNick() {
+        VkMessageRouter router = newRouter();
+        admins.upsert(100L, "Chief", Role.CHIEF);
+        admins.upsert(300L, "OldNick", Role.MODER);
+
+        router.onMessage(new VkIncomingMessage(2000000001L, 100L, "!рнейм 300 NewNick"));
+        assertEquals("NewNick", admins.find(300L).orElseThrow().mcNick());
+        assertTrue(api.lastReply().contains("Ник обновл"));
     }
 
     @Test

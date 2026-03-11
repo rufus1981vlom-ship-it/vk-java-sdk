@@ -13,8 +13,9 @@ manage.help: "Командалар:
 !admins
 !admin info <vk_id>
 !admin add <vk_id> <nick> <role>
-!admin set <vk_id> <role>
 !admin set <vk_id> <nick> <role>
+!rname <vk_id> <nick>
+!рнейм <vk_id> <nick>
 !admin remove <vk_id>
 !cmd <command>"
 manage.online: "Онлайн: {count}\n{players}"
@@ -29,7 +30,7 @@ manage.usage.mute: "❌ Қолдану: !mute <player> <time> <reason>"
 manage.usage.ban: "❌ Қолдану: !ban <player> [time] <reason>"
 manage.usage.admin_info: "❌ Қолдану: !admin info <vk_id>"
 manage.usage.admin_add: "❌ Қолдану: !admin add <vk_id> <nick> <role>"
-manage.usage.admin_set: "❌ Қолдану: !admin set <vk_id> <role>"
+manage.usage.admin_set: "❌ Қолдану: !admin set <vk_id> <nick> <role>"
 manage.usage.admin_remove: "❌ Қолдану: !admin remove <vk_id>"
 manage.vk_id_numeric: "❌ vk_id сан болуы керек"
 manage.invalid_role: "❌ Рөл қате. Мынау қолжетімді: helper, moder, admin, staff, chief"
@@ -41,6 +42,8 @@ manage.executed: "✅ Команда орындалды: {cmd}"
 manage.admin_info: "VK ID: {vk}\nНик: {nick}\nРөлі: {role}\nҚұрылған: {created}\nЖаңартылған: {updated}"
 manage.admin_added: "✅ Админ қосылды: vk={vk}, nick={nick}, role={role}"
 manage.admin_set: "✅ Рөл жаңартылды: vk={vk}, role={role}"
+manage.usage.admin_rname: "❌ Қолдану: !rname <vk_id> <nick>"
+manage.admin_renamed: "✅ Ник жаңартылды: vk={vk}, nick={nick}"
 manage.admin_removed.summary: "✅ Админ өшірілді\nVK ID: {vk}\nНик: {nick}\nОйын тобы reset: {lp}\nЧаттардан өшірілді: {removed}\nСәтсіз: {failed}\nЧатта табылмады: {not_found}\nБот құқығы жетпеді: {no_permissions}\nVK API қателері: {api_errors}"
 manage.unknown: "❌ Белгісіз manage командасы"
 support.reply_sent: "✅ {player} ойыншысына #{id} тикет бойынша жауап жіберілді"

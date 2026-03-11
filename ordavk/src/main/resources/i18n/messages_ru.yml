@@ -13,8 +13,9 @@ manage.help: "Команды:
 !admins
 !admin info <vk_id>
 !admin add <vk_id> <nick> <role>
-!admin set <vk_id> <role>
 !admin set <vk_id> <nick> <role>
+!rname <vk_id> <nick>
+!рнейм <vk_id> <nick>
 !admin remove <vk_id>
 !cmd <command>"
 manage.online: "Онлайн: {count}\n{players}"
@@ -29,7 +30,7 @@ manage.usage.mute: "❌ Использование: !mute <player> <time> <reaso
 manage.usage.ban: "❌ Использование: !ban <player> [time] <reason>"
 manage.usage.admin_info: "❌ Использование: !admin info <vk_id>"
 manage.usage.admin_add: "❌ Использование: !admin add <vk_id> <nick> <role>"
-manage.usage.admin_set: "❌ Использование: !admin set <vk_id> <role>"
+manage.usage.admin_set: "❌ Использование: !admin set <vk_id> <nick> <role>"
 manage.usage.admin_remove: "❌ Использование: !admin remove <vk_id>"
 manage.vk_id_numeric: "❌ vk_id должен быть числом"
 manage.invalid_role: "❌ Некорректная роль. Доступно: helper, moder, admin, staff, chief"
@@ -41,6 +42,8 @@ manage.executed: "✅ Команда выполнена: {cmd}"
 manage.admin_info: "VK ID: {vk}\nНик: {nick}\nРоль: {role}\nСоздан: {created}\nОбновлён: {updated}"
 manage.admin_added: "✅ Админ добавлен: vk={vk}, nick={nick}, role={role}"
 manage.admin_set: "✅ Роль обновлена: vk={vk}, role={role}"
+manage.usage.admin_rname: "❌ Использование: !rname <vk_id> <nick>"
+manage.admin_renamed: "✅ Ник обновлён: vk={vk}, nick={nick}"
 manage.admin_removed.summary: "✅ Администратор удалён\nVK ID: {vk}\nНик: {nick}\nИгровая группа сброшена: {lp}\nУдалён из бесед: {removed}\nНе удалось: {failed}\nНе найден в беседе: {not_found}\nНедостаточно прав у бота: {no_permissions}\nОшибки VK API: {api_errors}"
 manage.unknown: "❌ Неизвестная manage-команда"
 support.reply_sent: "✅ Ответ отправлен игроку {player} по тикету #{id}"

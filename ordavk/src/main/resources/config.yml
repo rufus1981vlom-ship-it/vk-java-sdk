@@ -46,6 +46,7 @@ permissions:
     manage.admin.add: admin
     manage.admin.set: admin
     manage.admin.remove: admin
+    manage.admin.rname: admin
 
     manage.cmd: chief
 
