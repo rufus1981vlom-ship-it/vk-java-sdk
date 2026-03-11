@@ -8,6 +8,7 @@ import ordacraft.vk.command.OrdaVkControlCommand;
 import ordacraft.vk.command.TicketPlayerCommands;
 import ordacraft.vk.config.ConfigManager;
 import ordacraft.vk.governance.GovernanceService;
+import ordacraft.vk.listener.DangerousCommandListener;
 import ordacraft.vk.listener.JoinQuitListener;
 import ordacraft.vk.service.*;
 import ordacraft.vk.storage.YamlFileStore;
@@ -64,6 +65,7 @@ public class OrdaVKPlugin extends JavaPlugin {
         if (getCommand("ordavk") != null) getCommand("ordavk").setExecutor(new OrdaVkControlCommand(this));
 
         getServer().getPluginManager().registerEvents(new JoinQuitListener(relay, pendingReplyService, i18n), this);
+        getServer().getPluginManager().registerEvents(new DangerousCommandListener(relay), this);
     }
 
     public synchronized String bootstrapAdmin(long vkId, String mcNick, Role role) {

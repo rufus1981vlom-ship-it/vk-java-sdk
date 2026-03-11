@@ -75,6 +75,36 @@ class VkMessageRouterTest {
         MockBukkit.unmock();
     }
 
+
+    @Test
+    void helpWorksWhenManageChatConfiguredAsChatIdWithoutPeerOffset() {
+        Map<String, Role> matrix = new HashMap<>(settings.commandMinRoles());
+        PluginSettings chatIdSettings = new PluginSettings("", 1, "5.199", 1,
+                List.of(new VkChatConfig(1L, ChatMode.MANAGE), new VkChatConfig(2L, ChatMode.EVENTS)),
+                "whitelist", Set.of("say"), Set.of("op"), Set.of("chief"),
+                10, 5, false, Set.of(), false, "ru", matrix);
+
+        SupportTicketService tickets = new SupportTicketService(new YamlFileStore(Path.of("/tmp/ordavk-tickets2.yml")));
+        PendingReplyService pending = new PendingReplyService(new YamlFileStore(Path.of("/tmp/ordavk-pending2.yml")));
+        VkMessageRouter router = new VkMessageRouter(
+                chatIdSettings,
+                api,
+                admins,
+                tickets,
+                pending,
+                new CommandPolicyService(chatIdSettings),
+                new TestConsoleDispatchService(api),
+                new GovernanceService(chatIdSettings, api),
+                new EventRelayService(chatIdSettings, api),
+                new LocalizationService("ru"),
+                new PermissionMatrixService(chatIdSettings.commandMinRoles())
+        );
+
+        admins.upsert(10L, "Boss", Role.CHIEF);
+        router.onMessage(new VkIncomingMessage(2000000001L, 10L, "!help"));
+        assertTrue(api.lastReply().contains("!online"));
+    }
+
     @Test
     void helpContainsNewCommandsAndNoVkKick() {
         VkMessageRouter router = newRouter();

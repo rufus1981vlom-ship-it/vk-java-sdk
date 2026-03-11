@@ -65,12 +65,26 @@ public class VkMessageRouter {
     }
 
     public void onMessage(VkIncomingMessage msg) {
-        ChatMode mode = settings.chats().stream().filter(c -> c.id() == msg.peerId()).map(c -> c.mode()).findFirst().orElse(ChatMode.IGNORE);
+        ChatMode mode = resolveChatMode(msg.peerId());
         if (mode == ChatMode.IGNORE || mode == ChatMode.EVENTS) return;
 
         var actor = admins.find(msg.fromId());
         if (mode == ChatMode.MANAGE) handleManage(msg, actor.orElse(null));
         if (mode == ChatMode.SUPPORT) handleSupport(msg, actor.map(a -> a.role()).orElse(null));
+    }
+
+    private ChatMode resolveChatMode(long peerId) {
+        final long chatOffset = 2_000_000_000L;
+        for (var chat : settings.chats()) {
+            if (chat.id() == peerId) {
+                return chat.mode();
+            }
+            // Разрешаем настраивать id как peer_id (2000000001) или как chat_id (1)
+            if (peerId >= chatOffset && chat.id() > 0 && chat.id() < chatOffset && chat.id() + chatOffset == peerId) {
+                return chat.mode();
+            }
+        }
+        return ChatMode.IGNORE;
     }
 
     private boolean require(Role role, String key, long peerId) {
