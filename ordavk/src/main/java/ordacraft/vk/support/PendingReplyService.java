@@ -25,7 +25,9 @@ public class PendingReplyService {
         }
     }
 
+    public Optional<PendingReply> get(UUID uuid){ return Optional.ofNullable(pending.get(uuid)); }
     public Optional<PendingReply> take(UUID uuid){ return Optional.ofNullable(pending.remove(uuid)); }
+    public void remove(UUID uuid){ pending.remove(uuid); }
     public void put(PendingReply r){ pending.put(r.playerUuid(), r); }
 
     public void save(){

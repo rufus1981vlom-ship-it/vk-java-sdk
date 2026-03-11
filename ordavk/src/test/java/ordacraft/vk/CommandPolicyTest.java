@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class CommandPolicyTest {
     @Test void whitelistAndBlacklistAndSlash(){
-        PluginSettings s = new PluginSettings("",0,"",1, List.of(), "whitelist", Set.of("say"), Set.of("op"), Set.of("chief"), 1,1,false, Set.of(), false, "ru", java.util.Map.of());
+        PluginSettings s = new PluginSettings("",0,"",1, List.of(), "whitelist", Set.of("say"), Set.of("op"), Set.of("chief"), 1,1,50,false, Set.of(), false, "ru", java.util.Map.of());
         CommandPolicyService c = new CommandPolicyService(s);
         assertTrue(c.allows("/say hi"));
         assertFalse(c.allows("/op Notch"));

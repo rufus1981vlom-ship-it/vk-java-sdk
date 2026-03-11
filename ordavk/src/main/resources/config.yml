@@ -27,6 +27,8 @@ vk:
 support:
   cooldown-seconds: 60
   max-open-tickets-per-player: 3
+  # Задержка доставки оффлайн-ответа после входа игрока (40..60 тиков)
+  join-delivery-delay-ticks: 50
   auto-close-on-reply: false
 
 permissions:

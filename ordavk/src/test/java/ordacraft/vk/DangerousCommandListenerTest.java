@@ -37,7 +37,7 @@ class DangerousCommandListenerTest {
         PluginSettings settings = new PluginSettings("", 1, "5.199", 1,
                 List.of(new VkChatConfig(2000000002L, ChatMode.EVENTS)),
                 "whitelist", Set.of("say"), Set.of("op"), Set.of("chief"),
-                10, 5, false, Set.of(), false, "ru", new HashMap<>());
+                10, 5, 50, false, Set.of(), false, "ru", new HashMap<>());
         listener = new DangerousCommandListener(new EventRelayService(settings, api));
     }
 

@@ -67,7 +67,7 @@ class VkMessageRouterTest {
         settings = new PluginSettings("", 1, "5.199", 1,
                 List.of(new VkChatConfig(2000000001L, ChatMode.MANAGE), new VkChatConfig(2000000002L, ChatMode.EVENTS)),
                 "whitelist", Set.of("say"), Set.of("op"), Set.of("chief"),
-                10, 5, false, Set.of(), false, "ru", matrix);
+                10, 5, 50, false, Set.of(), false, "ru", matrix);
 
         api = new TestVkApi();
     }
@@ -84,7 +84,7 @@ class VkMessageRouterTest {
         PluginSettings chatIdSettings = new PluginSettings("", 1, "5.199", 1,
                 List.of(new VkChatConfig(1L, ChatMode.MANAGE), new VkChatConfig(2L, ChatMode.EVENTS)),
                 "whitelist", Set.of("say"), Set.of("op"), Set.of("chief"),
-                10, 5, false, Set.of(), false, "ru", matrix);
+                10, 5, 50, false, Set.of(), false, "ru", matrix);
 
         SupportTicketService tickets = new SupportTicketService(new YamlFileStore(Path.of("/tmp/ordavk-tickets2.yml")));
         PendingReplyService pending = new PendingReplyService(new YamlFileStore(Path.of("/tmp/ordavk-pending2.yml")));
@@ -115,7 +115,7 @@ class VkMessageRouterTest {
                         new VkChatConfig(2000000002L, ChatMode.EVENTS),
                         new VkChatConfig(2000000003L, ChatMode.SUPPORT)),
                 "whitelist", Set.of("say"), Set.of("op"), Set.of("chief"),
-                10, 5, false, Set.of(), false, "ru", settings.commandMinRoles());
+                10, 5, 50, false, Set.of(), false, "ru", settings.commandMinRoles());
 
         SupportTicketService tickets = new SupportTicketService(new YamlFileStore(Path.of("/tmp/ordavk-tickets3.yml")));
         PendingReplyService pending = new PendingReplyService(new YamlFileStore(Path.of("/tmp/ordavk-pending3.yml")));

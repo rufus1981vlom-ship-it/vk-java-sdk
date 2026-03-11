@@ -10,6 +10,7 @@ public record PluginSettings(String token, int groupId, String apiVersion, int p
                              List<VkChatConfig> chats, String cmdPolicyMode,
                              Set<String> cmdAllowed, Set<String> cmdBlocked, Set<String> cmdAllowedRoles,
                              int supportCooldown, int supportMaxOpen,
+                             int joinDeliveryDelayTicks,
                              boolean autoCloseOnReply, Set<Long> protectedUsers, boolean allowProtectedRemoval,
                              String language,
                              Map<String, Role> commandMinRoles) {}

@@ -49,12 +49,17 @@ public class ConfigManager {
                 allowed, blocked, allowedRoles,
                 cfg.getInt("support.cooldown-seconds", 60),
                 cfg.getInt("support.max-open-tickets-per-player", 3),
+                clampJoinDelay(cfg.getInt("support.join-delivery-delay-ticks", 50)),
                 cfg.getBoolean("support.auto-close-on-reply", false),
                 protectedUsers,
                 cfg.getBoolean("vk.allow-protected-removal", false),
                 cfg.getString("general.language", "ru"),
                 matrix
         );
+    }
+
+    private int clampJoinDelay(int ticks) {
+        return Math.max(40, Math.min(60, ticks));
     }
 
     private Set<String> normalize(List<String> input){
