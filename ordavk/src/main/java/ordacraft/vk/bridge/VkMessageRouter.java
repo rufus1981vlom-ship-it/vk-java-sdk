@@ -13,7 +13,9 @@ import ordacraft.vk.service.ConsoleDispatchService;
 import ordacraft.vk.service.EventRelayService;
 import ordacraft.vk.service.LocalizationService;
 import ordacraft.vk.service.PermissionMatrixService;
+import ordacraft.vk.service.AuditService;
 import ordacraft.vk.support.PendingReply;
+import ordacraft.vk.support.PendingActionService;
 import ordacraft.vk.support.PendingReplyService;
 import ordacraft.vk.support.SupportTicketService;
 import ordacraft.vk.vk.api.VkApiClient;
@@ -37,10 +39,12 @@ public class VkMessageRouter {
     private final AdminRegistry admins;
     private final SupportTicketService tickets;
     private final PendingReplyService pending;
+    private final PendingActionService pendingActions;
     private final CommandPolicyService cmdPolicy;
     private final ConsoleDispatchService console;
     private final GovernanceService governance;
     private final EventRelayService relay;
+    private final AuditService audit;
     private final LocalizationService i18n;
     private final PermissionMatrixService matrix;
     private final RoleService roleService = new RoleService();
@@ -51,15 +55,25 @@ public class VkMessageRouter {
                            PendingReplyService pending, CommandPolicyService cmdPolicy, ConsoleDispatchService console,
                            GovernanceService governance, EventRelayService relay,
                            LocalizationService i18n, PermissionMatrixService matrix) {
+        this(settings, api, admins, tickets, pending, null, cmdPolicy, console, governance, relay, null, i18n, matrix);
+    }
+
+    public VkMessageRouter(PluginSettings settings, VkApiClient api, AdminRegistry admins, SupportTicketService tickets,
+                           PendingReplyService pending, PendingActionService pendingActions,
+                           CommandPolicyService cmdPolicy, ConsoleDispatchService console,
+                           GovernanceService governance, EventRelayService relay, AuditService audit,
+                           LocalizationService i18n, PermissionMatrixService matrix) {
         this.settings = settings;
         this.api = api;
         this.admins = admins;
         this.tickets = tickets;
         this.pending = pending;
+        this.pendingActions = pendingActions;
         this.cmdPolicy = cmdPolicy;
         this.console = console;
         this.governance = governance;
         this.relay = relay;
+        this.audit = audit;
         this.i18n = i18n;
         this.matrix = matrix;
     }
@@ -162,7 +176,7 @@ public class VkMessageRouter {
 
         if (t.equalsIgnoreCase("!admins")) {
             if (!require(role, "manage.admins", msg.peerId())) return;
-            StringBuilder sb = new StringBuilder("Admins:\n");
+            StringBuilder sb = new StringBuilder("Администраторы:\n");
             admins.all().stream().sorted(Comparator.comparingLong(AdminRecord::vkId))
                     .forEach(a -> sb.append(a.vkId()).append(" -> ").append(a.mcNick()).append(" (").append(a.role().name().toLowerCase()).append(")\n"));
             reply(msg.peerId(), sb.toString());
@@ -278,8 +292,14 @@ public class VkMessageRouter {
                 reply(msg.peerId(), i18n.tr("manage.usage.kick"));
                 return;
             }
+            Player target = Bukkit.getPlayerExact(p[1]);
+            if (target == null || !target.isOnline()) {
+                reply(msg.peerId(), i18n.tr("manage.kick.online_only"));
+                return;
+            }
             console.dispatch("kick " + p[1] + " " + p[2]);
             relay.event("⛔ Kick: " + p[1] + " | Причина: " + p[2] + " | Инициатор: " + actorLabel(actor));
+            audit("kick", "target=" + p[1] + ", reason=" + p[2] + ", actor=" + actorLabel(actor));
             reply(msg.peerId(), i18n.tr("common.done"));
             return;
         }
@@ -291,9 +311,36 @@ public class VkMessageRouter {
                 reply(msg.peerId(), i18n.tr("manage.usage.mute"));
                 return;
             }
-            console.dispatch("tempmute " + p[1] + " " + p[2] + " " + p[3]);
-            relay.event("🔇 TempMute: " + p[1] + " на " + p[2] + " | Причина: " + p[3] + " | Инициатор: " + actorLabel(actor));
-            reply(msg.peerId(), i18n.tr("common.done"));
+            String command = "tempmute " + p[1] + " " + p[2] + " " + p[3];
+            if (isOnline(p[1])) {
+                console.dispatch(command);
+                relay.event("🔇 TempMute: " + p[1] + " на " + p[2] + " | Причина: " + p[3] + " | Инициатор: " + actorLabel(actor));
+                audit("mute", "target=" + p[1] + ", duration=" + p[2] + ", reason=" + p[3] + ", actor=" + actorLabel(actor));
+                reply(msg.peerId(), i18n.tr("common.done"));
+            } else {
+                enqueuePendingAction(p[1], "mute", command, actor);
+                reply(msg.peerId(), i18n.tr("manage.pending_saved"));
+            }
+            return;
+        }
+
+        if (t.startsWith("!unmute ")) {
+            if (!require(role, "manage.mute", msg.peerId())) return;
+            String[] p = t.split("\\s+", 2);
+            if (p.length < 2 || p[1].isBlank()) {
+                reply(msg.peerId(), "❌ Использование: !unmute <player>");
+                return;
+            }
+            String command = "unmute " + p[1].trim();
+            if (isOnline(p[1].trim())) {
+                console.dispatch(command);
+                relay.event("🔈 UnMute: " + p[1].trim() + " | Инициатор: " + actorLabel(actor));
+                audit("unmute", "target=" + p[1].trim() + ", actor=" + actorLabel(actor));
+                reply(msg.peerId(), i18n.tr("common.done"));
+            } else {
+                enqueuePendingAction(p[1].trim(), "unmute", command, actor);
+                reply(msg.peerId(), i18n.tr("manage.pending_saved"));
+            }
             return;
         }
 
@@ -305,14 +352,40 @@ public class VkMessageRouter {
                 return;
             }
             String cmd = p.length == 3 ? BanCommandParser.toConsole(p[1], null, p[2]) : BanCommandParser.toConsole(p[1], p[2], p[3]);
-            console.dispatch(cmd);
-            if (cmd.toLowerCase().startsWith("tempban ")) {
-                relay.event("⛔ TempBan: " + p[1] + " на " + p[2] + " | Причина: " + p[3] + " | Инициатор: " + actorLabel(actor));
+            if (isOnline(p[1])) {
+                console.dispatch(cmd);
+                if (cmd.toLowerCase().startsWith("tempban ")) {
+                    relay.event("⛔ TempBan: " + p[1] + " на " + p[2] + " | Причина: " + p[3] + " | Инициатор: " + actorLabel(actor));
+                } else {
+                    String reason = p.length == 3 ? p[2] : (p[2] + " " + p[3]);
+                    relay.event("⛔ Ban: " + p[1] + " навсегда | Причина: " + reason + " | Инициатор: " + actorLabel(actor));
+                }
+                audit("ban", "target=" + p[1] + ", cmd=" + cmd + ", actor=" + actorLabel(actor));
+                reply(msg.peerId(), i18n.tr("manage.executed", Map.of("cmd", cmd)));
             } else {
-                String reason = p.length == 3 ? p[2] : (p[2] + " " + p[3]);
-                relay.event("⛔ Ban: " + p[1] + " навсегда | Причина: " + reason + " | Инициатор: " + actorLabel(actor));
+                enqueuePendingAction(p[1], "ban", cmd, actor);
+                reply(msg.peerId(), i18n.tr("manage.pending_saved"));
             }
-            reply(msg.peerId(), i18n.tr("manage.executed", Map.of("cmd", cmd)));
+            return;
+        }
+
+        if (t.startsWith("!unban ")) {
+            if (!require(role, "manage.ban", msg.peerId())) return;
+            String[] p = t.split("\\s+", 2);
+            if (p.length < 2 || p[1].isBlank()) {
+                reply(msg.peerId(), "❌ Использование: !unban <player>");
+                return;
+            }
+            String command = "pardon " + p[1].trim();
+            if (isOnline(p[1].trim())) {
+                console.dispatch(command);
+                relay.event("✅ UnBan: " + p[1].trim() + " | Инициатор: " + actorLabel(actor));
+                audit("unban", "target=" + p[1].trim() + ", actor=" + actorLabel(actor));
+                reply(msg.peerId(), i18n.tr("common.done"));
+            } else {
+                enqueuePendingAction(p[1].trim(), "unban", command, actor);
+                reply(msg.peerId(), i18n.tr("manage.pending_saved"));
+            }
             return;
         }
 
@@ -355,6 +428,7 @@ public class VkMessageRouter {
                     + " | Удалён из бесед: " + stats.removed()
                     + " | Не удалось: " + stats.failed()
                     + " | Инициатор: " + actor.vkId());
+            audit("admin_remove", "target=" + targetVkId + ", nick=" + emptyAsDash(nick) + ", actor=" + actor.vkId());
 
             reply(msg.peerId(), i18n.tr("manage.admin_removed.summary", Map.of(
                     "vk", String.valueOf(targetVkId),
@@ -397,6 +471,7 @@ public class VkMessageRouter {
                 relay.event("⚠️ Raw command: " + normalized + " | Инициатор: " + actorLabel(actor));
             }
             reply(msg.peerId(), i18n.tr("manage.executed", Map.of("cmd", raw)));
+            audit("raw_command", "actor=" + actorLabel(actor) + ", cmd=" + raw);
             return;
         }
 
@@ -417,11 +492,11 @@ public class VkMessageRouter {
             switch (p.cmd()) {
                 case "!list" -> {
                     if (!require(role, "support.list", msg.peerId())) return;
-                    reply(msg.peerId(), tickets.openTickets().stream().map(t -> "#" + t.id() + " " + t.playerName() + " " + t.type()).reduce((a, b) -> a + "\n" + b).orElse("No tickets"));
+                    reply(msg.peerId(), tickets.openTickets().stream().map(t -> "#" + t.id() + " " + t.playerName() + " " + t.type()).reduce((a, b) -> a + "\n" + b).orElse("Нет открытых тикетов"));
                 }
                 case "!info" -> {
                     if (!require(role, "support.info", msg.peerId())) return;
-                    reply(msg.peerId(), tickets.find(p.id()).map(t -> "#" + t.id() + " " + t.text()).orElse("Not found"));
+                    reply(msg.peerId(), tickets.find(p.id()).map(t -> "#" + t.id() + " " + t.text()).orElse("Тикет не найден"));
                 }
                 case "!close" -> {
                     if (!require(role, "support.close", msg.peerId())) return;
@@ -537,6 +612,27 @@ public class VkMessageRouter {
         try {
             api.send(peerId, text);
         } catch (Exception ignored) {
+        }
+    }
+
+    private boolean isOnline(String playerName) {
+        Player p = Bukkit.getPlayerExact(playerName);
+        return p != null && p.isOnline();
+    }
+
+    private void enqueuePendingAction(String targetNick, String actionType, String command, AdminRecord actor) {
+        if (pendingActions == null) return;
+        OfflinePlayer off = Bukkit.getOfflinePlayer(targetNick);
+        pendingActions.enqueue(off.getUniqueId(), targetNick, actionType, command,
+                actor == null ? 0L : actor.vkId(), actor == null ? "unknown" : actor.role().name().toLowerCase());
+        pendingActions.save();
+        relay.event("🕓 Отложенное действие сохранено: " + actionType + " для " + targetNick + " | Инициатор: " + actorLabel(actor));
+        audit("pending_action_saved", "type=" + actionType + ", target=" + targetNick + ", actor=" + actorLabel(actor) + ", cmd=" + command);
+    }
+
+    private void audit(String action, String details) {
+        if (audit != null) {
+            audit.log(action, details);
         }
     }
 }

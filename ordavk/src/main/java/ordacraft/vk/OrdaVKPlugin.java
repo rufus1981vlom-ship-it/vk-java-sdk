@@ -13,6 +13,7 @@ import ordacraft.vk.listener.JoinQuitListener;
 import ordacraft.vk.service.*;
 import ordacraft.vk.storage.YamlFileStore;
 import ordacraft.vk.support.PendingReplyService;
+import ordacraft.vk.support.PendingActionService;
 import ordacraft.vk.support.SupportTicketService;
 import ordacraft.vk.vk.api.VkApiClient;
 import ordacraft.vk.vk.polling.VkLongPollService;
@@ -25,6 +26,7 @@ public class OrdaVKPlugin extends JavaPlugin {
     private AdminRegistry adminRegistry;
     private SupportTicketService ticketService;
     private PendingReplyService pendingReplyService;
+    private PendingActionService pendingActionService;
     private AuditService auditService;
 
     private ConfigManager config;
@@ -47,11 +49,13 @@ public class OrdaVKPlugin extends JavaPlugin {
         adminRegistry = new AdminRegistry(new YamlFileStore(data.resolve("admins.yml")));
         ticketService = new SupportTicketService(new YamlFileStore(data.resolve("tickets.yml")));
         pendingReplyService = new PendingReplyService(new YamlFileStore(data.resolve("pending-replies.yml")));
+        pendingActionService = new PendingActionService(new YamlFileStore(data.resolve("pending-actions.yml")));
         auditService = new AuditService(new YamlFileStore(data.resolve("audit-log.yml")));
 
         adminRegistry.load();
         ticketService.load();
         pendingReplyService.load();
+        pendingActionService.load();
 
         rebuildRuntime(false);
 
@@ -64,7 +68,7 @@ public class OrdaVKPlugin extends JavaPlugin {
         if (getCommand("report") != null) getCommand("report").setExecutor(ticketsCommand);
         if (getCommand("ordavk") != null) getCommand("ordavk").setExecutor(new OrdaVkControlCommand(this));
 
-        getServer().getPluginManager().registerEvents(new JoinQuitListener(this, relay, pendingReplyService, i18n, config.settings().joinDeliveryDelayTicks()), this);
+        getServer().getPluginManager().registerEvents(new JoinQuitListener(this, relay, pendingReplyService, pendingActionService, console, auditService, i18n, config.settings().joinDeliveryDelayTicks()), this);
         getServer().getPluginManager().registerEvents(new DangerousCommandListener(relay), this);
     }
 
@@ -82,6 +86,7 @@ public class OrdaVKPlugin extends JavaPlugin {
             adminRegistry.load();
             ticketService.load();
             pendingReplyService.load();
+            pendingActionService.load();
 
             rebuildRuntime(true);
             return ChatColor.GREEN + "OrdaVK Manager reloaded successfully";
@@ -100,7 +105,7 @@ public class OrdaVKPlugin extends JavaPlugin {
         console = new ConsoleDispatchService(this);
         governance = new GovernanceService(config.settings(), vkApiClient);
         policy = new CommandPolicyService(config.settings());
-        router = new VkMessageRouter(config.settings(), vkApiClient, adminRegistry, ticketService, pendingReplyService, policy, console, governance, relay, i18n, matrix);
+        router = new VkMessageRouter(config.settings(), vkApiClient, adminRegistry, ticketService, pendingReplyService, pendingActionService, policy, console, governance, relay, auditService, i18n, matrix);
 
         poll = new VkLongPollService(vkApiClient, config.settings().groupId(), config.settings().pollInterval(), router::onMessage);
         poll.start();
@@ -116,6 +121,7 @@ public class OrdaVKPlugin extends JavaPlugin {
         if (adminRegistry != null) adminRegistry.save();
         if (ticketService != null) ticketService.save();
         if (pendingReplyService != null) pendingReplyService.save();
+        if (pendingActionService != null) pendingActionService.save();
         if (auditService != null) auditService.save();
     }
 }

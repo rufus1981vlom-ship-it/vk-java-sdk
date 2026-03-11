@@ -9,7 +9,9 @@ manage.help: "Команды:
 !check <nick>
 !kick <nick> <reason>
 !mute <nick> <time> <reason>
+!unmute <nick>
 !ban <nick> [time] <reason>
+!unban <nick>
 !admins
 !admin info <vk_id>
 !admin add <vk_id> <nick> <role>
@@ -57,3 +59,7 @@ player.support.max_open: "[Support] Слишком много открытых �
 player.support.sent: "[Support] Ваш запрос отправлен. Тикет: #{id}"
 player.support.reply: "[Support] Ответ: {text}"
 player.support.offline_reply: "[Support] У вас сохранённый ответ по тикету #{id}: {text}"
+
+manage.kick.online_only: "❌ Игрок не в сети. Команда !kick работает только для игроков в сети."
+manage.pending_saved: "🕓 Игрок оффлайн. Действие сохранено и будет применено автоматически при входе."
+player.support.report_usage: "[Support] Использование: /report <игрок> <причина>"
