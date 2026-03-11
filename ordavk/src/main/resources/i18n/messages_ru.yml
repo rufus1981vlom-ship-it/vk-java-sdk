@@ -2,7 +2,21 @@ common.done: "✅ Готово"
 common.not_enough_permission: "❌ Недостаточно прав"
 common.yes: "да"
 common.no: "нет"
-manage.help: "Команды: !help, !online, !status, !check <ник>, !kick <ник> <причина>, !mute <ник> <время> <причина>, !ban <ник> [время] <причина>, !admins, !admin info <vk_id>, !admin add <vk_id> <ник> <роль>, !admin set <vk_id> <роль>, !admin remove <vk_id>, !cmd <команда>"
+manage.help: "Команды:
+!help
+!online
+!status
+!check <nick>
+!kick <nick> <reason>
+!mute <nick> <time> <reason>
+!ban <nick> [time] <reason>
+!admins
+!admin info <vk_id>
+!admin add <vk_id> <nick> <role>
+!admin set <vk_id> <role>
+!admin set <vk_id> <nick> <role>
+!admin remove <vk_id>
+!cmd <command>"
 manage.online: "Онлайн: {count}\n{players}"
 manage.online.empty: "никого"
 manage.status: "Статус сервера\nОнлайн: {online}/{max}\nTPS: {tps}\nПамять: {memory}\nАптайм: {uptime}"

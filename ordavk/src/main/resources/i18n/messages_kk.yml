@@ -2,7 +2,21 @@ common.done: "✅ Дайын"
 common.not_enough_permission: "❌ Құқық жеткіліксіз"
 common.yes: "иә"
 common.no: "жоқ"
-manage.help: "Командалар: !help, !online, !status, !check <nick>, !kick <nick> <reason>, !mute <nick> <time> <reason>, !ban <nick> [time] <reason>, !admins, !admin info <vk_id>, !admin add <vk_id> <nick> <role>, !admin set <vk_id> <role>, !admin remove <vk_id>, !cmd <command>"
+manage.help: "Командалар:
+!help
+!online
+!status
+!check <nick>
+!kick <nick> <reason>
+!mute <nick> <time> <reason>
+!ban <nick> [time] <reason>
+!admins
+!admin info <vk_id>
+!admin add <vk_id> <nick> <role>
+!admin set <vk_id> <role>
+!admin set <vk_id> <nick> <role>
+!admin remove <vk_id>
+!cmd <command>"
 manage.online: "Онлайн: {count}\n{players}"
 manage.online.empty: "ешкім жоқ"
 manage.status: "Сервер күйі\nОнлайн: {online}/{max}\nTPS: {tps}\nЖад: {memory}\nUptime: {uptime}"

@@ -98,6 +98,9 @@ public class VkMessageRouter {
     private void handleManage(VkIncomingMessage msg, AdminRecord actor) {
         Role role = actor == null ? null : actor.role();
         String t = msg.text() == null ? "" : msg.text().trim();
+        if (!t.startsWith("!")) {
+            return;
+        }
 
         if ("!help".equalsIgnoreCase(t)) {
             if (!require(role, "manage.help", msg.peerId())) return;
@@ -375,12 +378,16 @@ public class VkMessageRouter {
     }
 
     private void handleSupport(VkIncomingMessage msg, Role role) {
+        String t = msg.text() == null ? "" : msg.text().trim();
+        if (!t.startsWith("!")) {
+            return;
+        }
         if (role == null) {
             reply(msg.peerId(), i18n.tr("common.not_enough_permission"));
             return;
         }
         try {
-            var p = SupportCommandParser.parse(msg.text());
+            var p = SupportCommandParser.parse(t);
             switch (p.cmd()) {
                 case "!list" -> {
                     if (!require(role, "support.list", msg.peerId())) return;

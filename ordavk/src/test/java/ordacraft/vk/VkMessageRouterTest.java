@@ -106,6 +106,41 @@ class VkMessageRouterTest {
         assertTrue(api.lastReply().contains("!online"));
     }
 
+
+    @Test
+    void plainTextMessagesAreIgnoredInManageAndSupportChats() {
+        PluginSettings withSupport = new PluginSettings("", 1, "5.199", 1,
+                List.of(new VkChatConfig(2000000001L, ChatMode.MANAGE),
+                        new VkChatConfig(2000000002L, ChatMode.EVENTS),
+                        new VkChatConfig(2000000003L, ChatMode.SUPPORT)),
+                "whitelist", Set.of("say"), Set.of("op"), Set.of("chief"),
+                10, 5, false, Set.of(), false, "ru", settings.commandMinRoles());
+
+        SupportTicketService tickets = new SupportTicketService(new YamlFileStore(Path.of("/tmp/ordavk-tickets3.yml")));
+        PendingReplyService pending = new PendingReplyService(new YamlFileStore(Path.of("/tmp/ordavk-pending3.yml")));
+        VkMessageRouter router = new VkMessageRouter(
+                withSupport,
+                api,
+                admins,
+                tickets,
+                pending,
+                new CommandPolicyService(withSupport),
+                new TestConsoleDispatchService(api),
+                new GovernanceService(withSupport, api),
+                new EventRelayService(withSupport, api),
+                new LocalizationService("ru"),
+                new PermissionMatrixService(withSupport.commandMinRoles())
+        );
+
+        admins.upsert(10L, "Boss", Role.CHIEF);
+
+        int before = api.replies.size();
+        router.onMessage(new VkIncomingMessage(2000000001L, 10L, "просто текст"));
+        router.onMessage(new VkIncomingMessage(2000000003L, 10L, "и тут просто текст"));
+
+        assertEquals(before, api.replies.size());
+    }
+
     @Test
     void helpContainsNewCommandsAndNoVkKick() {
         VkMessageRouter router = newRouter();
