@@ -11,6 +11,7 @@ public record PendingAction(int id,
                             String issuedByRole,
                             long createdAt,
                             String status,
+                            int attempts,
                             Long appliedAt,
                             String errorMessage) {
 }

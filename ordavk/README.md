@@ -141,6 +141,7 @@ ordavk bootstrap 1103524939 pommesshooter chief
 - `admins.yml`
 - `tickets.yml`
 - `pending-replies.yml`
+- `pending-actions.yml`
 - `audit-log.yml`
 - `config.yml`
 
@@ -188,3 +189,14 @@ mvn -Daether.remoteRepositoryFilter.prefixes=false -f ordavk/pom.xml clean packa
 5. Проверить `!help` и `!status` в manage-чате.
 6. Проверить `/helpop` или `/report` и команды `!list/!r` в support-чате.
 7. Проверить events-чат: наказания, LP-изменения, dangerous raw-команды.
+
+---
+
+## 8) CHANGELOG (offline-safe moderation)
+
+- Добавлена очередь `pending-actions.yml` для offline-safe moderation.
+- `!kick` работает только для онлайн-игроков и не ставится в очередь.
+- `!mute`, `!unmute`, `!ban`, `!unban` при оффлайне сохраняются в pending-actions и применяются при следующем входе игрока.
+- Применение pending-actions идёт по времени создания (FIFO), с защитой от повторного применения в одном join-цикле.
+- При ошибках применения действие не теряется: увеличивается счётчик попыток, сохраняется причина, пишется audit/event лог.
+- Pending support replies сохраняются сразу и удаляются только после успешной delayed доставки (2–3 сек через `join-delivery-delay-ticks`).

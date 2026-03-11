@@ -39,6 +39,7 @@ public class PendingActionService {
                         String.valueOf(v.getOrDefault("issuedByRole", "")),
                         ((Number) v.getOrDefault("createdAt", 0)).longValue(),
                         String.valueOf(v.getOrDefault("status", "pending")),
+                        ((Number) v.getOrDefault("attempts", 0)).intValue(),
                         v.get("appliedAt") == null ? null : ((Number) v.get("appliedAt")).longValue(),
                         v.get("errorMessage") == null ? null : String.valueOf(v.get("errorMessage"))
                 );
@@ -52,7 +53,7 @@ public class PendingActionService {
                                               long issuedByVkId, String issuedByRole) {
         int id = sequence++;
         PendingAction action = new PendingAction(id, playerUuid, playerNick, actionType, command,
-                issuedByVkId, issuedByRole, Instant.now().toEpochMilli(), "pending", null, null);
+                issuedByVkId, issuedByRole, Instant.now().toEpochMilli(), "pending", 0, null, null);
         actions.put(id, action);
         return action;
     }
@@ -61,13 +62,11 @@ public class PendingActionService {
         return actions.values().stream()
                 .filter(a -> a.playerUuid().equals(uuid))
                 .filter(a -> "pending".equalsIgnoreCase(a.status()))
-                .sorted(Comparator.comparingInt(PendingAction::id))
+                .sorted(Comparator.comparingLong(PendingAction::createdAt).thenComparingInt(PendingAction::id))
                 .toList();
     }
 
     public synchronized void markApplied(int id) {
-        PendingAction action = actions.get(id);
-        if (action == null) return;
         actions.remove(id);
     }
 
@@ -75,7 +74,7 @@ public class PendingActionService {
         PendingAction a = actions.get(id);
         if (a == null) return;
         actions.put(id, new PendingAction(a.id(), a.playerUuid(), a.playerNick(), a.actionType(), a.command(),
-                a.issuedByVkId(), a.issuedByRole(), a.createdAt(), "failed", null, error));
+                a.issuedByVkId(), a.issuedByRole(), a.createdAt(), "pending", a.attempts() + 1, null, error));
     }
 
     public synchronized void save() {
@@ -92,6 +91,7 @@ public class PendingActionService {
             row.put("issuedByRole", a.issuedByRole());
             row.put("createdAt", a.createdAt());
             row.put("status", a.status());
+            row.put("attempts", a.attempts());
             row.put("appliedAt", a.appliedAt());
             row.put("errorMessage", a.errorMessage());
             out.put(String.valueOf(a.id()), row);

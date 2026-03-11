@@ -26,6 +26,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
@@ -514,8 +515,9 @@ public class VkMessageRouter {
                             reply(msg.peerId(), i18n.tr("support.reply_sent", Map.of("player", t.playerName(), "id", String.valueOf(t.id()))));
                         } else {
                             pending.put(new PendingReply(t.playerUuid(), t.playerName(), t.id(), p.tail(), msg.fromId(), String.valueOf(msg.fromId()), Instant.now().toEpochMilli()));
+                            pending.save();
                             tickets.markAnswered(t.id(), msg.fromId(), false);
-                            relay.event("💾 " + t.playerName() + " is offline. Reply for ticket #" + t.id() + " has been saved.");
+                            relay.event("💾 " + t.playerName() + " оффлайн. Ответ по тикету #" + t.id() + " сохранён.");
                             reply(msg.peerId(), i18n.tr("support.reply_saved"));
                         }
                     }, () -> reply(msg.peerId(), i18n.tr("support.not_found")));
@@ -623,7 +625,8 @@ public class VkMessageRouter {
     private void enqueuePendingAction(String targetNick, String actionType, String command, AdminRecord actor) {
         if (pendingActions == null) return;
         OfflinePlayer off = Bukkit.getOfflinePlayer(targetNick);
-        pendingActions.enqueue(off.getUniqueId(), targetNick, actionType, command,
+        var uuid = off.getUniqueId() != null ? off.getUniqueId() : java.util.UUID.nameUUIDFromBytes(("OfflinePlayer:" + targetNick).getBytes(StandardCharsets.UTF_8));
+        pendingActions.enqueue(uuid, targetNick, actionType, command,
                 actor == null ? 0L : actor.vkId(), actor == null ? "unknown" : actor.role().name().toLowerCase());
         pendingActions.save();
         relay.event("🕓 Отложенное действие сохранено: " + actionType + " для " + targetNick + " | Инициатор: " + actorLabel(actor));
