@@ -3,6 +3,7 @@ package ordacraft.vk;
 import be.seeseemelk.mockbukkit.MockBukkit;
 import be.seeseemelk.mockbukkit.ServerMock;
 import be.seeseemelk.mockbukkit.entity.PlayerMock;
+import ordacraft.vk.admin.AdminRecord;
 import ordacraft.vk.admin.AdminRegistry;
 import ordacraft.vk.admin.Role;
 import ordacraft.vk.bridge.VkMessageRouter;
@@ -162,6 +163,19 @@ class VkMessageRouterTest {
         assertTrue(summary.contains("Не удалось:"));
         assertTrue(api.consoleCommands.stream().anyMatch(c -> c.equals("lp user Steve parent set default")));
         assertTrue(admins.find(200L).isEmpty());
+    }
+
+    @Test
+    void adminSetSupportsMentionAndNickUpdate() {
+        VkMessageRouter router = newRouter();
+        admins.upsert(100L, "Chief", Role.CHIEF);
+        admins.upsert(26255262L, "OldNick", Role.HELPER);
+
+        router.onMessage(new VkIncomingMessage(2000000001L, 100L, "!admin set @id26255262 General_Kutuzov admin"));
+        AdminRecord updated = admins.find(26255262L).orElseThrow();
+
+        assertEquals(Role.ADMIN, updated.role());
+        assertEquals("General_Kutuzov", updated.mcNick());
     }
 
     @Test

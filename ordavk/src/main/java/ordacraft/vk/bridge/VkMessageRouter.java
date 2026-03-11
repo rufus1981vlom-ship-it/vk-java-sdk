@@ -216,13 +216,14 @@ public class VkMessageRouter {
         if (t.startsWith("!admin set ")) {
             if (!require(role, "manage.admin.set", msg.peerId())) return;
             String[] p = t.split("\\s+");
-            if (p.length != 4) {
+            if (p.length != 4 && p.length != 5) {
                 reply(msg.peerId(), i18n.tr("manage.usage.admin_set"));
                 return;
             }
             Long vkId = parseVkId(p[2], msg.peerId());
             if (vkId == null) return;
-            Role targetRole = parseRole(p[3], msg.peerId());
+            String newNick = p.length == 5 ? p[3] : null;
+            Role targetRole = parseRole(p.length == 5 ? p[4] : p[3], msg.peerId());
             if (targetRole == null) return;
             Optional<AdminRecord> existing = admins.find(vkId);
             if (existing.isEmpty()) {
@@ -233,9 +234,10 @@ public class VkMessageRouter {
                 reply(msg.peerId(), i18n.tr("common.not_enough_permission"));
                 return;
             }
-            admins.upsert(vkId, existing.get().mcNick(), targetRole);
+            String nickToSave = (newNick == null || newNick.isBlank()) ? existing.get().mcNick() : newNick;
+            admins.upsert(vkId, nickToSave, targetRole);
             admins.save();
-            relay.event("🛡 admin_set actor=" + actor.vkId() + " target=" + vkId + " role=" + targetRole.name().toLowerCase());
+            relay.event("🛡 admin_set actor=" + actor.vkId() + " target=" + vkId + " nick=" + nickToSave + " role=" + targetRole.name().toLowerCase());
             reply(msg.peerId(), i18n.tr("manage.admin_set", Map.of("vk", String.valueOf(vkId), "role", targetRole.name().toLowerCase())));
             return;
         }
@@ -418,8 +420,25 @@ public class VkMessageRouter {
     }
 
     private Long parseVkId(String input, long peerId) {
+        String normalized = input == null ? "" : input.trim();
+        if (normalized.startsWith("[id") && normalized.contains("|")) {
+            normalized = normalized.substring(3, normalized.indexOf('|'));
+        }
+        if (normalized.startsWith("@")) {
+            normalized = normalized.substring(1);
+        }
+        if (normalized.startsWith("id")) {
+            normalized = normalized.substring(2);
+        }
+        if (normalized.startsWith("https://vk.com/id")) {
+            normalized = normalized.substring("https://vk.com/id".length());
+        }
+        if (normalized.startsWith("http://vk.com/id")) {
+            normalized = normalized.substring("http://vk.com/id".length());
+        }
+
         try {
-            return Long.parseLong(input);
+            return Long.parseLong(normalized);
         } catch (NumberFormatException e) {
             reply(peerId, i18n.tr("manage.vk_id_numeric"));
             return null;
