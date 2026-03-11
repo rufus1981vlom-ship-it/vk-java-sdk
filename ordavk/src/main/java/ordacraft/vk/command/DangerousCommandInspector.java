@@ -2,11 +2,18 @@ package ordacraft.vk.command;
 
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class DangerousCommandInspector {
     public enum LpAction { SET, ADD, REMOVE }
 
     public record LpGroupChange(String user, String group, LpAction action) {}
+
+    private static final Pattern LP_GROUP_CHANGE_PATTERN = Pattern.compile(
+            "^(?:lp|luckperms)\\s+user\\s+(\\S+)\\s+parent\\s+(set|add|remove)\\s+(.+)$",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE
+    );
 
     private static final Set<String> DANGEROUS_PREFIXES = Set.of(
             "kick", "mute", "tempmute", "ban", "tempban", "pardon", "unban",
@@ -34,15 +41,11 @@ public class DangerousCommandInspector {
     }
 
     public LpGroupChange parseLpGroupChange(String raw) {
-        String[] p = normalize(raw).split("\\s+");
-        if (p.length < 6) return null;
+        String normalized = normalize(raw);
+        Matcher matcher = LP_GROUP_CHANGE_PATTERN.matcher(normalized);
+        if (!matcher.matches()) return null;
 
-        String root = p[0].toLowerCase(Locale.ROOT);
-        if (!("lp".equals(root) || "luckperms".equals(root))) return null;
-        if (!"user".equalsIgnoreCase(p[1])) return null;
-        if (!"parent".equalsIgnoreCase(p[3])) return null;
-
-        String action = p[4].toLowerCase(Locale.ROOT);
+        String action = matcher.group(2).toLowerCase(Locale.ROOT);
         LpAction a = switch (action) {
             case "set" -> LpAction.SET;
             case "add" -> LpAction.ADD;
@@ -51,6 +54,9 @@ public class DangerousCommandInspector {
         };
         if (a == null) return null;
 
-        return new LpGroupChange(p[2], p[5], a);
+        String user = matcher.group(1);
+        String group = matcher.group(3).trim();
+        if (group.isEmpty()) return null;
+        return new LpGroupChange(user, group, a);
     }
 }

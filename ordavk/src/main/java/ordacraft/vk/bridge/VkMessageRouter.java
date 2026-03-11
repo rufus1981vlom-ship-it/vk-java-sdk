@@ -293,13 +293,13 @@ public class VkMessageRouter {
                 reply(msg.peerId(), i18n.tr("manage.usage.kick"));
                 return;
             }
+            relay.event("⛔ Kick: " + p[1] + " | Причина: " + p[2] + " | Инициатор: " + actorLabel(actor));
             Player target = Bukkit.getPlayerExact(p[1]);
             if (target == null || !target.isOnline()) {
                 reply(msg.peerId(), i18n.tr("manage.kick.online_only"));
                 return;
             }
             console.dispatch("kick " + p[1] + " " + p[2]);
-            relay.event("⛔ Kick: " + p[1] + " | Причина: " + p[2] + " | Инициатор: " + actorLabel(actor));
             audit("kick", "target=" + p[1] + ", reason=" + p[2] + ", actor=" + actorLabel(actor));
             reply(msg.peerId(), i18n.tr("common.done"));
             return;
@@ -313,9 +313,9 @@ public class VkMessageRouter {
                 return;
             }
             String command = "tempmute " + p[1] + " " + p[2] + " " + p[3];
+            relay.event("🔇 TempMute: " + p[1] + " на " + p[2] + " | Причина: " + p[3] + " | Инициатор: " + actorLabel(actor));
             if (isOnline(p[1])) {
                 console.dispatch(command);
-                relay.event("🔇 TempMute: " + p[1] + " на " + p[2] + " | Причина: " + p[3] + " | Инициатор: " + actorLabel(actor));
                 audit("mute", "target=" + p[1] + ", duration=" + p[2] + ", reason=" + p[3] + ", actor=" + actorLabel(actor));
                 reply(msg.peerId(), i18n.tr("common.done"));
             } else {
@@ -353,14 +353,14 @@ public class VkMessageRouter {
                 return;
             }
             String cmd = p.length == 3 ? BanCommandParser.toConsole(p[1], null, p[2]) : BanCommandParser.toConsole(p[1], p[2], p[3]);
+            if (cmd.toLowerCase().startsWith("tempban ")) {
+                relay.event("⛔ TempBan: " + p[1] + " на " + p[2] + " | Причина: " + p[3] + " | Инициатор: " + actorLabel(actor));
+            } else {
+                String reason = p.length == 3 ? p[2] : (p[2] + " " + p[3]);
+                relay.event("⛔ Ban: " + p[1] + " навсегда | Причина: " + reason + " | Инициатор: " + actorLabel(actor));
+            }
             if (isOnline(p[1])) {
                 console.dispatch(cmd);
-                if (cmd.toLowerCase().startsWith("tempban ")) {
-                    relay.event("⛔ TempBan: " + p[1] + " на " + p[2] + " | Причина: " + p[3] + " | Инициатор: " + actorLabel(actor));
-                } else {
-                    String reason = p.length == 3 ? p[2] : (p[2] + " " + p[3]);
-                    relay.event("⛔ Ban: " + p[1] + " навсегда | Причина: " + reason + " | Инициатор: " + actorLabel(actor));
-                }
                 audit("ban", "target=" + p[1] + ", cmd=" + cmd + ", actor=" + actorLabel(actor));
                 reply(msg.peerId(), i18n.tr("manage.executed", Map.of("cmd", cmd)));
             } else {

@@ -26,6 +26,10 @@ class DangerousCommandInspectorTest {
         assertNotNull(add);
         assertEquals(DangerousCommandInspector.LpAction.ADD, add.action());
 
+        var unicodeTail = inspector.parseLpGroupChange("lp user Steve parent set хан старший");
+        assertNotNull(unicodeTail);
+        assertEquals("хан старший", unicodeTail.group());
+
         var none = inspector.parseLpGroupChange("say hello");
         assertNull(none);
     }
