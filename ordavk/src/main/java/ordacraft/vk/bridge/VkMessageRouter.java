@@ -112,8 +112,8 @@ public class VkMessageRouter {
 
     private void handleManage(VkIncomingMessage msg, AdminRecord actor) {
         Role role = actor == null ? null : actor.role();
-        String t = msg.text() == null ? "" : msg.text().trim();
-        if (!t.startsWith("!")) {
+        String commandText = msg.text() == null ? "" : msg.text().trim();
+        if (!commandText.startsWith("!")) {
             return;
         }
 
@@ -489,15 +489,15 @@ public class VkMessageRouter {
             return;
         }
         try {
-            var p = SupportCommandParser.parse(t);
+            var p = SupportCommandParser.parse(commandText);
             switch (p.cmd()) {
                 case "!list" -> {
                     if (!require(role, "support.list", msg.peerId())) return;
-                    reply(msg.peerId(), tickets.openTickets().stream().map(t -> "#" + t.id() + " " + t.playerName() + " " + t.type()).reduce((a, b) -> a + "\n" + b).orElse("Нет открытых тикетов"));
+                    reply(msg.peerId(), tickets.openTickets().stream().map(ticket -> "#" + ticket.id() + " " + ticket.playerName() + " " + ticket.type()).reduce((a, b) -> a + "\n" + b).orElse("Нет открытых тикетов"));
                 }
                 case "!info" -> {
                     if (!require(role, "support.info", msg.peerId())) return;
-                    reply(msg.peerId(), tickets.find(p.id()).map(t -> "#" + t.id() + " " + t.text()).orElse("Тикет не найден"));
+                    reply(msg.peerId(), tickets.find(p.id()).map(ticket -> "#" + ticket.id() + " " + ticket.text()).orElse("Тикет не найден"));
                 }
                 case "!close" -> {
                     if (!require(role, "support.close", msg.peerId())) return;
