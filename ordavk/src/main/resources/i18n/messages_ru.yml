@@ -54,6 +54,7 @@ support.not_found: "❌ Тикет не найден"
 support.unknown: "❌ Неизвестная support-команда"
 support.malformed: "❌ Неверный формат support-команды"
 player.support.enter_text: "[Support] Укажите текст запроса."
+player.support.helpop_usage: "[Support] Использование: /helpop <вопрос> или /ac <вопрос>"
 player.support.cooldown: "[Support] Подождите перед следующим запросом."
 player.support.max_open: "[Support] Слишком много открытых тикетов."
 player.support.sent: "[Support] Ваш запрос отправлен. Тикет: #{id}"
@@ -62,4 +63,4 @@ player.support.offline_reply: "[Support] У вас сохранённый отв
 
 manage.kick.online_only: "❌ Игрок не в сети. Команда !kick работает только для игроков в сети."
 manage.pending_saved: "🕓 Игрок оффлайн. Действие сохранено и будет применено автоматически при входе."
-player.support.report_usage: "[Support] Использование: /report <игрок> <причина>"
+player.support.report_usage: "[Support] Использование: /report <игрок> <причина> или /rep <игрок> <причина>"

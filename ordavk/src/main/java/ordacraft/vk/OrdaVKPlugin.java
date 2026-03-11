@@ -65,7 +65,9 @@ public class OrdaVKPlugin extends JavaPlugin {
                 }));
 
         if (getCommand("helpop") != null) getCommand("helpop").setExecutor(ticketsCommand);
+        if (getCommand("ac") != null) getCommand("ac").setExecutor(ticketsCommand);
         if (getCommand("report") != null) getCommand("report").setExecutor(ticketsCommand);
+        if (getCommand("rep") != null) getCommand("rep").setExecutor(ticketsCommand);
         if (getCommand("ordavk") != null) getCommand("ordavk").setExecutor(new OrdaVkControlCommand(this));
 
         getServer().getPluginManager().registerEvents(new JoinQuitListener(this, relay, pendingReplyService, pendingActionService, console, auditService, i18n, config.settings().joinDeliveryDelayTicks()), this);

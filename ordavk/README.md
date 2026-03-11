@@ -200,3 +200,4 @@ mvn -Daether.remoteRepositoryFilter.prefixes=false -f ordavk/pom.xml clean packa
 - Применение pending-actions идёт по времени создания (FIFO), с защитой от повторного применения в одном join-цикле.
 - При ошибках применения действие не теряется: увеличивается счётчик попыток, сохраняется причина, пишется audit/event лог.
 - Pending support replies сохраняются сразу и удаляются только после успешной delayed доставки (2–3 сек через `join-delivery-delay-ticks`).
+- Добавлены игровые алиасы: `/ac` для `/helpop` и `/rep` для `/report` (логика, cooldown и лимиты общие).

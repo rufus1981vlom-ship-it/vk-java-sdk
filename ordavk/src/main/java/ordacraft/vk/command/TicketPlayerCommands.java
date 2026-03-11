@@ -25,11 +25,25 @@ public class TicketPlayerCommands implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player p)) return true;
-        if (args.length == 0) { p.sendMessage(i18n.tr("player.support.enter_text")); return true; }
+
+        String cmdName = command.getName().toLowerCase();
+        boolean helpopLike = cmdName.equals("helpop") || cmdName.equals("ac");
+        boolean reportLike = cmdName.equals("report") || cmdName.equals("rep");
+
+        if (args.length == 0) {
+            if (helpopLike) {
+                p.sendMessage(i18n.tr("player.support.helpop_usage"));
+            } else if (reportLike) {
+                p.sendMessage(i18n.tr("player.support.report_usage"));
+            } else {
+                p.sendMessage(i18n.tr("player.support.enter_text"));
+            }
+            return true;
+        }
         if (tickets.isCooldown(p.getUniqueId(), cooldownSec)) { p.sendMessage(i18n.tr("player.support.cooldown")); return true; }
         if (tickets.openBy(p.getUniqueId()) >= maxOpen) { p.sendMessage(i18n.tr("player.support.max_open")); return true; }
 
-        if (command.getName().equalsIgnoreCase("helpop")) {
+        if (helpopLike) {
             var t = tickets.create(TicketType.QUESTION, p.getUniqueId(), p.getName(), "", String.join(" ", args));
             tickets.touch(p.getUniqueId());
             p.sendMessage(i18n.tr("player.support.sent", Map.of("id", String.valueOf(t.id()))));
@@ -37,7 +51,7 @@ public class TicketPlayerCommands implements CommandExecutor {
             return true;
         }
 
-        if (command.getName().equalsIgnoreCase("report")) {
+        if (reportLike) {
             if (args.length < 2) { p.sendMessage(i18n.tr("player.support.report_usage")); return true; }
             String target = args[0];
             String reason = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
