@@ -480,8 +480,8 @@ public class VkMessageRouter {
     }
 
     private void handleSupport(VkIncomingMessage msg, Role role) {
-        String t = msg.text() == null ? "" : msg.text().trim();
-        if (!t.startsWith("!")) {
+        String commandText = msg.text() == null ? "" : msg.text().trim();
+        if (!commandText.startsWith("!")) {
             return;
         }
         if (role == null) {
@@ -506,18 +506,18 @@ public class VkMessageRouter {
                 }
                 case "!r" -> {
                     if (!require(role, "support.reply", msg.peerId())) return;
-                    tickets.find(p.id()).ifPresentOrElse(t -> {
-                        var pl = Bukkit.getPlayer(t.playerUuid());
+                    tickets.find(p.id()).ifPresentOrElse(ticket -> {
+                        var pl = Bukkit.getPlayer(ticket.playerUuid());
                         if (pl != null) {
                             pl.sendMessage(i18n.tr("player.support.reply", Map.of("text", p.tail())));
-                            tickets.markAnswered(t.id(), msg.fromId(), settings.autoCloseOnReply());
-                            relay.event("💬 Reply sent to " + t.playerName() + " for ticket #" + t.id());
-                            reply(msg.peerId(), i18n.tr("support.reply_sent", Map.of("player", t.playerName(), "id", String.valueOf(t.id()))));
+                            tickets.markAnswered(ticket.id(), msg.fromId(), settings.autoCloseOnReply());
+                            relay.event("💬 Reply sent to " + ticket.playerName() + " for ticket #" + ticket.id());
+                            reply(msg.peerId(), i18n.tr("support.reply_sent", Map.of("player", ticket.playerName(), "id", String.valueOf(ticket.id()))));
                         } else {
-                            pending.put(new PendingReply(t.playerUuid(), t.playerName(), t.id(), p.tail(), msg.fromId(), String.valueOf(msg.fromId()), Instant.now().toEpochMilli()));
+                            pending.put(new PendingReply(ticket.playerUuid(), ticket.playerName(), ticket.id(), p.tail(), msg.fromId(), String.valueOf(msg.fromId()), Instant.now().toEpochMilli()));
                             pending.save();
-                            tickets.markAnswered(t.id(), msg.fromId(), false);
-                            relay.event("💾 " + t.playerName() + " оффлайн. Ответ по тикету #" + t.id() + " сохранён.");
+                            tickets.markAnswered(ticket.id(), msg.fromId(), false);
+                            relay.event("💾 " + ticket.playerName() + " оффлайн. Ответ по тикету #" + ticket.id() + " сохранён.");
                             reply(msg.peerId(), i18n.tr("support.reply_saved"));
                         }
                     }, () -> reply(msg.peerId(), i18n.tr("support.not_found")));
