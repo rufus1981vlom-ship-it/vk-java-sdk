@@ -1,4 +1,4 @@
-name: Orda VK
+name: OrdaVK
 version: ${version}
 main: com.orda.vkplugin.OrdaVkPlugin
 api-version: '1.20'

@@ -1,4 +1,4 @@
-name: OrdaVK Manager
+name: OrdaVK
 version: 1.0.0
 main: ordacraft.vk.OrdaVKPlugin
 api-version: '1.20'
