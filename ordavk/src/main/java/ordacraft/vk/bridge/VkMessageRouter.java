@@ -117,13 +117,13 @@ public class VkMessageRouter {
             return;
         }
 
-        if ("!help".equalsIgnoreCase(t)) {
+        if ("!help".equalsIgnoreCase(commandText)) {
             if (!require(role, "manage.help", msg.peerId())) return;
             reply(msg.peerId(), i18n.tr("manage.help"));
             return;
         }
 
-        if ("!online".equalsIgnoreCase(t)) {
+        if ("!online".equalsIgnoreCase(commandText)) {
             if (!require(role, "manage.online", msg.peerId())) return;
             List<String> names = Bukkit.getOnlinePlayers().stream().map(Player::getName).sorted().toList();
             String body = names.isEmpty() ? i18n.tr("manage.online.empty") : String.join(", ", names);
@@ -131,7 +131,7 @@ public class VkMessageRouter {
             return;
         }
 
-        if ("!status".equalsIgnoreCase(t)) {
+        if ("!status".equalsIgnoreCase(commandText)) {
             if (!require(role, "manage.status", msg.peerId())) return;
             int online = Bukkit.getOnlinePlayers().size();
             int max = Bukkit.getMaxPlayers();
@@ -150,9 +150,9 @@ public class VkMessageRouter {
             return;
         }
 
-        if (t.startsWith("!check ")) {
+        if (commandText.startsWith("!check ")) {
             if (!require(role, "manage.check", msg.peerId())) return;
-            String[] p = t.split("\\s+", 2);
+            String[] p = commandText.split("\\s+", 2);
             if (p.length < 2 || p[1].isBlank()) {
                 reply(msg.peerId(), i18n.tr("manage.usage.check"));
                 return;
@@ -175,7 +175,7 @@ public class VkMessageRouter {
             return;
         }
 
-        if (t.equalsIgnoreCase("!admins")) {
+        if (commandText.equalsIgnoreCase("!admins")) {
             if (!require(role, "manage.admins", msg.peerId())) return;
             StringBuilder sb = new StringBuilder("Администраторы:\n");
             admins.all().stream().sorted(Comparator.comparingLong(AdminRecord::vkId))
@@ -184,9 +184,9 @@ public class VkMessageRouter {
             return;
         }
 
-        if (t.startsWith("!admin info ")) {
+        if (commandText.startsWith("!admin info ")) {
             if (!require(role, "manage.admin.info", msg.peerId())) return;
-            String[] p = t.split("\\s+");
+            String[] p = commandText.split("\\s+");
             if (p.length != 3) {
                 reply(msg.peerId(), i18n.tr("manage.usage.admin_info"));
                 return;
@@ -209,9 +209,9 @@ public class VkMessageRouter {
             return;
         }
 
-        if (t.startsWith("!admin add ")) {
+        if (commandText.startsWith("!admin add ")) {
             if (!require(role, "manage.admin.add", msg.peerId())) return;
-            String[] p = t.split("\\s+");
+            String[] p = commandText.split("\\s+");
             if (p.length != 5) {
                 reply(msg.peerId(), i18n.tr("manage.usage.admin_add"));
                 return;
@@ -231,9 +231,9 @@ public class VkMessageRouter {
             return;
         }
 
-        if (t.startsWith("!admin set ")) {
+        if (commandText.startsWith("!admin set ")) {
             if (!require(role, "manage.admin.set", msg.peerId())) return;
-            String[] p = t.split("\\s+");
+            String[] p = commandText.split("\\s+");
             if (p.length != 5) {
                 reply(msg.peerId(), i18n.tr("manage.usage.admin_set"));
                 return;
@@ -260,9 +260,9 @@ public class VkMessageRouter {
             return;
         }
 
-        if (t.startsWith("!rname ") || t.startsWith("!рнейм ")) {
+        if (commandText.startsWith("!rname ") || commandText.startsWith("!рнейм ")) {
             if (!require(role, "manage.admin.rname", msg.peerId())) return;
-            String[] p = t.split("\\s+");
+            String[] p = commandText.split("\\s+");
             if (p.length != 3) {
                 reply(msg.peerId(), i18n.tr("manage.usage.admin_rname"));
                 return;
@@ -286,9 +286,9 @@ public class VkMessageRouter {
             return;
         }
 
-        if (t.startsWith("!kick ")) {
+        if (commandText.startsWith("!kick ")) {
             if (!require(role, "manage.kick", msg.peerId())) return;
-            String[] p = t.split("\\s+", 3);
+            String[] p = commandText.split("\\s+", 3);
             if (p.length < 3) {
                 reply(msg.peerId(), i18n.tr("manage.usage.kick"));
                 return;
@@ -305,9 +305,9 @@ public class VkMessageRouter {
             return;
         }
 
-        if (t.startsWith("!mute ")) {
+        if (commandText.startsWith("!mute ")) {
             if (!require(role, "manage.mute", msg.peerId())) return;
-            String[] p = t.split("\\s+", 4);
+            String[] p = commandText.split("\\s+", 4);
             if (p.length < 4) {
                 reply(msg.peerId(), i18n.tr("manage.usage.mute"));
                 return;
@@ -325,9 +325,9 @@ public class VkMessageRouter {
             return;
         }
 
-        if (t.startsWith("!unmute ")) {
+        if (commandText.startsWith("!unmute ")) {
             if (!require(role, "manage.mute", msg.peerId())) return;
-            String[] p = t.split("\\s+", 2);
+            String[] p = commandText.split("\\s+", 2);
             if (p.length < 2 || p[1].isBlank()) {
                 reply(msg.peerId(), "❌ Использование: !unmute <player>");
                 return;
@@ -345,9 +345,9 @@ public class VkMessageRouter {
             return;
         }
 
-        if (t.startsWith("!ban ")) {
+        if (commandText.startsWith("!ban ")) {
             if (!require(role, "manage.ban", msg.peerId())) return;
-            String[] p = t.split("\\s+", 4);
+            String[] p = commandText.split("\\s+", 4);
             if (p.length < 3) {
                 reply(msg.peerId(), i18n.tr("manage.usage.ban"));
                 return;
@@ -370,9 +370,9 @@ public class VkMessageRouter {
             return;
         }
 
-        if (t.startsWith("!unban ")) {
+        if (commandText.startsWith("!unban ")) {
             if (!require(role, "manage.ban", msg.peerId())) return;
-            String[] p = t.split("\\s+", 2);
+            String[] p = commandText.split("\\s+", 2);
             if (p.length < 2 || p[1].isBlank()) {
                 reply(msg.peerId(), "❌ Использование: !unban <player>");
                 return;
@@ -390,9 +390,9 @@ public class VkMessageRouter {
             return;
         }
 
-        if (t.startsWith("!admin remove ")) {
+        if (commandText.startsWith("!admin remove ")) {
             if (!require(role, "manage.admin.remove", msg.peerId())) return;
-            String[] p = t.split("\\s+");
+            String[] p = commandText.split("\\s+");
             if (p.length != 3) {
                 reply(msg.peerId(), i18n.tr("manage.usage.admin_remove"));
                 return;
@@ -444,9 +444,9 @@ public class VkMessageRouter {
             return;
         }
 
-        if (t.startsWith("!cmd ")) {
+        if (commandText.startsWith("!cmd ")) {
             if (!require(role, "manage.cmd", msg.peerId())) return;
-            String raw = t.substring(5).trim();
+            String raw = commandText.substring(5).trim();
             if (raw.isEmpty()) {
                 reply(msg.peerId(), i18n.tr("manage.empty_command"));
                 return;
