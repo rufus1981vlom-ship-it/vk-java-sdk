@@ -265,6 +265,7 @@ class VkMessageRouterTest {
         VkMessageRouter router = newRouter();
         admins.upsert(500L, "Bolat", Role.CHIEF);
         admins.upsert(501L, "Steve", Role.HELPER);
+        server.addPlayer("Steve");
 
         router.onMessage(new VkIncomingMessage(2000000001L, 500L, "!kick Steve flood"));
         router.onMessage(new VkIncomingMessage(2000000001L, 500L, "!mute Steve 30m мат"));
