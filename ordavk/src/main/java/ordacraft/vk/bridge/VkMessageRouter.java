@@ -457,8 +457,10 @@ public class VkMessageRouter {
                 reply(msg.peerId(), i18n.tr("common.not_enough_permission"));
                 return;
             }
-            // Для ролей, которым уже разрешён raw (!cmd), не блокируем команду policy-фильтром
-            // до этапа аудита/логирования опасных команд.
+            if (!cmdPolicy.allowsRaw(role, raw)) {
+                reply(msg.peerId(), i18n.tr("manage.cmd_blocked_by_policy"));
+                return;
+            }
             console.dispatch(raw);
             String normalized = dangerousInspector.normalize(raw);
             DangerousCommandInspector.LpGroupChange lp = dangerousInspector.parseLpGroupChange(normalized);

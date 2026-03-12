@@ -11,6 +11,13 @@ public class CommandPolicyService {
 
     public boolean canUseRaw(Role role){ return settings.cmdAllowedRoles().contains(role.name().toLowerCase(Locale.ROOT)); }
 
+    public boolean allowsRaw(Role role, String command) {
+        // Роли из cmdAllowedRoles имеют право на raw-команды без доп. policy-фильтра
+        // (иначе события dangerous/raw и LP-структурные события могут не дойти до audit/event relay).
+        if (canUseRaw(role)) return true;
+        return allows(command);
+    }
+
     public boolean allows(String command){
         String cmd = command.trim();
         if (cmd.startsWith("/")) cmd = cmd.substring(1);

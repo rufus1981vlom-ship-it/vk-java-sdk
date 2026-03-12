@@ -3,7 +3,6 @@ package ordacraft.vk;
 import ordacraft.vk.admin.Role;
 import ordacraft.vk.command.CommandPolicyService;
 import ordacraft.vk.config.PluginSettings;
-import ordacraft.vk.config.VkChatConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -20,5 +19,13 @@ class CommandPolicyTest {
         assertFalse(c.allows("/ban x"));
         assertTrue(c.canUseRaw(Role.CHIEF));
         assertFalse(c.canUseRaw(Role.ADMIN));
+    }
+
+    @Test void allowsRawForChiefBypassesPolicy(){
+        PluginSettings s = new PluginSettings("",0,"",1, List.of(), "whitelist", Set.of("say"), Set.of("op"), Set.of("chief"), 1,1,50,false, Set.of(), false, "ru", java.util.Map.of());
+        CommandPolicyService c = new CommandPolicyService(s);
+        assertTrue(c.allowsRaw(Role.CHIEF, "ban Steve grief"));
+        assertTrue(c.allowsRaw(Role.CHIEF, "lp user Steve parent set хан"));
+        assertFalse(c.allowsRaw(Role.ADMIN, "ban Steve grief"));
     }
 }
