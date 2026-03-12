@@ -7,6 +7,7 @@ import ordacraft.vk.command.CommandPolicyService;
 import ordacraft.vk.command.OrdaVkControlCommand;
 import ordacraft.vk.command.TicketPlayerCommands;
 import ordacraft.vk.config.ConfigManager;
+import ordacraft.vk.config.ChatMode;
 import ordacraft.vk.governance.GovernanceService;
 import ordacraft.vk.listener.DangerousCommandListener;
 import ordacraft.vk.listener.JoinQuitListener;
@@ -59,10 +60,18 @@ public class OrdaVKPlugin extends JavaPlugin {
 
         rebuildRuntime(false);
 
-        var ticketsCommand = new TicketPlayerCommands(ticketService, config.settings().supportCooldown(), config.settings().supportMaxOpen(), i18n,
-                msg -> config.settings().chats().stream().filter(c -> c.mode().name().equals("SUPPORT")).forEach(c -> {
+        var ticketsCommand = new TicketPlayerCommands(
+                ticketService,
+                config.settings().supportCooldown(),
+                config.settings().supportMaxOpen(),
+                i18n,
+                msg -> config.settings().chats().stream().filter(c -> c.mode() == ChatMode.SUPPORT).forEach(c -> {
                     try { vkApiClient.send(c.id(), msg); } catch (Exception ignored) {}
-                }));
+                }),
+                msg -> config.settings().chats().stream().filter(c -> c.mode() == ChatMode.MMANAGE).forEach(c -> {
+                    try { vkApiClient.send(c.id(), msg); } catch (Exception ignored) {}
+                })
+        );
 
         if (getCommand("helpop") != null) getCommand("helpop").setExecutor(ticketsCommand);
         if (getCommand("ac") != null) getCommand("ac").setExecutor(ticketsCommand);

@@ -12,7 +12,9 @@ vk:
 
   chats:
     - id: 2000000001
-      mode: manage
+      mode: amanage
+    - id: 2000000004
+      mode: mmanage
     - id: 2000000002
       mode: events
     - id: 2000000003

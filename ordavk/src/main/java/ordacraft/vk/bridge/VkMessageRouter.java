@@ -84,7 +84,9 @@ public class VkMessageRouter {
         if (mode == ChatMode.IGNORE || mode == ChatMode.EVENTS) return;
 
         var actor = admins.find(msg.fromId());
-        if (mode == ChatMode.MANAGE) handleManage(msg, actor.orElse(null));
+        if (mode == ChatMode.MANAGE || mode == ChatMode.MMANAGE || mode == ChatMode.AMANAGE) {
+            handleManage(msg, actor.orElse(null));
+        }
         if (mode == ChatMode.SUPPORT) handleSupport(msg, actor.map(a -> a.role()).orElse(null));
     }
 
@@ -491,6 +493,10 @@ public class VkMessageRouter {
         try {
             var p = SupportCommandParser.parse(commandText);
             switch (p.cmd()) {
+                case "!help" -> {
+                    if (!require(role, "support.list", msg.peerId())) return;
+                    reply(msg.peerId(), i18n.tr("support.help"));
+                }
                 case "!list" -> {
                     if (!require(role, "support.list", msg.peerId())) return;
                     reply(msg.peerId(), tickets.openTickets().stream().map(ticket -> "#" + ticket.id() + " " + ticket.playerName() + " " + ticket.type()).reduce((a, b) -> a + "\n" + b).orElse("Нет открытых тикетов"));

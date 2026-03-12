@@ -17,9 +17,18 @@ public class TicketPlayerCommands implements CommandExecutor {
     private final int maxOpen;
     private final LocalizationService i18n;
     private final java.util.function.Consumer<String> notifySupportChat;
+    private final java.util.function.Consumer<String> notifyManageChat;
 
-    public TicketPlayerCommands(SupportTicketService tickets, int cooldownSec, int maxOpen, LocalizationService i18n, java.util.function.Consumer<String> notifySupportChat) {
-        this.tickets = tickets; this.cooldownSec = cooldownSec; this.maxOpen = maxOpen; this.i18n = i18n; this.notifySupportChat = notifySupportChat;
+    public TicketPlayerCommands(SupportTicketService tickets, int cooldownSec, int maxOpen,
+                                LocalizationService i18n,
+                                java.util.function.Consumer<String> notifySupportChat,
+                                java.util.function.Consumer<String> notifyManageChat) {
+        this.tickets = tickets;
+        this.cooldownSec = cooldownSec;
+        this.maxOpen = maxOpen;
+        this.i18n = i18n;
+        this.notifySupportChat = notifySupportChat;
+        this.notifyManageChat = notifyManageChat;
     }
 
     @Override
@@ -59,6 +68,7 @@ public class TicketPlayerCommands implements CommandExecutor {
             tickets.touch(p.getUniqueId());
             p.sendMessage(i18n.tr("player.support.sent", Map.of("id", String.valueOf(t.id()))));
             notifySupportChat.accept("#" + t.id() + " Новая жалоба от " + p.getName() + " -> " + target + ": " + t.text());
+            notifyManageChat.accept("#" + t.id() + " Жалоба: " + p.getName() + " -> " + target + ": " + t.text());
             return true;
         }
         return true;
