@@ -77,6 +77,10 @@ public class PendingActionService {
                 a.issuedByVkId(), a.issuedByRole(), a.createdAt(), "pending", a.attempts() + 1, null, error));
     }
 
+    public synchronized int size() {
+        return actions.size();
+    }
+
     public synchronized void save() {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("sequence", sequence);

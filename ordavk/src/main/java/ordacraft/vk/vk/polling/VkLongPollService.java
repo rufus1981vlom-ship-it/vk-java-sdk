@@ -38,6 +38,10 @@ public class VkLongPollService {
         executor.submit(this::loop);
     }
 
+    public boolean isRunning() {
+        return running;
+    }
+
     public synchronized void stop() {
         running = false;
         if (executor != null) {

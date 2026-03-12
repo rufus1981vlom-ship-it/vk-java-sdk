@@ -13,7 +13,9 @@ commands:
   rep:
     usage: /rep <игрок> <причина>
   ordavk:
-    usage: /ordavk <reload|bootstrap>
+    usage: /ordavk <reload|bootstrap|status|doctor|testvk>
+  ovk:
+    usage: /ovk online
 permissions:
   ordavk.reload:
     default: op

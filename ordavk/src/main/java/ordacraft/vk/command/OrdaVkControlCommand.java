@@ -17,28 +17,42 @@ public class OrdaVkControlCommand implements CommandExecutor {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (args.length == 0) {
-            sender.sendMessage("Usage: /ordavk <reload|bootstrap>");
+            sender.sendMessage("Использование: /ordavk <reload|bootstrap|status|doctor|testvk>");
             return true;
         }
 
         String sub = args[0].toLowerCase();
         if ("reload".equals(sub)) {
             if (!(sender instanceof ConsoleCommandSender) && !sender.hasPermission("ordavk.reload")) {
-                sender.sendMessage("§cNo permission");
+                sender.sendMessage("§cНедостаточно прав");
                 return true;
             }
-            String result = plugin.reloadManager();
-            sender.sendMessage(result);
+            sender.sendMessage(plugin.reloadManager());
+            return true;
+        }
+
+        if ("status".equals(sub)) {
+            sender.sendMessage(plugin.statusReport());
+            return true;
+        }
+
+        if ("doctor".equals(sub)) {
+            sender.sendMessage(plugin.doctorReport());
+            return true;
+        }
+
+        if ("testvk".equals(sub)) {
+            sender.sendMessage(plugin.testVk());
             return true;
         }
 
         if ("bootstrap".equals(sub)) {
             if (!(sender instanceof ConsoleCommandSender)) {
-                sender.sendMessage("§cBootstrap is console-only");
+                sender.sendMessage("§cBootstrap доступен только из консоли");
                 return true;
             }
             if (args.length != 4) {
-                sender.sendMessage("Usage: ordavk bootstrap <vk_id> <mc_nick> <role>");
+                sender.sendMessage("Использование: ordavk bootstrap <vk_id> <mc_nick> <role>");
                 return true;
             }
 
@@ -46,7 +60,7 @@ public class OrdaVkControlCommand implements CommandExecutor {
             try {
                 vkId = Long.parseLong(args[1]);
             } catch (NumberFormatException e) {
-                sender.sendMessage("Invalid vk_id: must be numeric");
+                sender.sendMessage("Некорректный vk_id: требуется число");
                 return true;
             }
 
@@ -54,16 +68,15 @@ public class OrdaVkControlCommand implements CommandExecutor {
             try {
                 role = Role.fromString(args[3]);
             } catch (Exception e) {
-                sender.sendMessage("Invalid role. Use: helper|moder|admin|staff|chief");
+                sender.sendMessage("Некорректная роль. Используйте: helper|moder|admin|staff|chief");
                 return true;
             }
 
-            String result = plugin.bootstrapAdmin(vkId, args[2], role);
-            sender.sendMessage(result);
+            sender.sendMessage(plugin.bootstrapAdmin(vkId, args[2], role));
             return true;
         }
 
-        sender.sendMessage("Unknown subcommand: " + args[0]);
+        sender.sendMessage("Неизвестная подкоманда: " + args[0]);
         return true;
     }
 }

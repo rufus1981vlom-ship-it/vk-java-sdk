@@ -30,6 +30,8 @@ public class PendingReplyService {
     public void remove(UUID uuid){ pending.remove(uuid); }
     public void put(PendingReply r){ pending.put(r.playerUuid(), r); }
 
+    public int size(){ return pending.size(); }
+
     public void save(){
         Map<String,Object> root=new LinkedHashMap<>(); Map<String,Object> out=new LinkedHashMap<>();
         for(var r: pending.values()){

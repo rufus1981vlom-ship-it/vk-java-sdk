@@ -84,6 +84,13 @@ Events-чат получает:
 
 ## 2) Команды плагина (Minecraft)
 
+### `/ordavk` команды
+
+- `/ordavk reload`
+- `/ordavk status`
+- `/ordavk doctor`
+- `/ordavk testvk`
+
 ### `/ordavk reload`
 Доступ:
 - из консоли: `ordavk reload`
@@ -201,3 +208,9 @@ mvn -Daether.remoteRepositoryFilter.prefixes=false -f ordavk/pom.xml clean packa
 - При ошибках применения действие не теряется: увеличивается счётчик попыток, сохраняется причина, пишется audit/event лог.
 - Pending support replies сохраняются сразу и удаляются только после успешной delayed доставки (2–3 сек через `join-delivery-delay-ticks`).
 - Добавлены игровые алиасы: `/ac` для `/helpop` и `/rep` для `/report` (логика, cooldown и лимиты общие).
+
+
+### `/ovk online`
+
+Показывает игроку его онлайн-статистику через провайдер Plan.
+Если Plan недоступен — выводится русский fallback: `Статистика онлайна сейчас недоступна.`
