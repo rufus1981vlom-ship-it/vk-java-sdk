@@ -457,7 +457,9 @@ public class VkMessageRouter {
                 reply(msg.peerId(), i18n.tr("common.not_enough_permission"));
                 return;
             }
-            if (!cmdPolicy.allows(raw)) {
+            // Для доверенных ролей (cmdAllowedRoles) разрешаем !cmd без фильтра whitelist/blacklist.
+            // Это сохраняет контроль через canUseRaw(role), но не ломает аудит опасных raw-команд.
+            if (!cmdPolicy.canUseRaw(role) && !cmdPolicy.allows(raw)) {
                 reply(msg.peerId(), i18n.tr("manage.cmd_blocked_by_policy"));
                 return;
             }
