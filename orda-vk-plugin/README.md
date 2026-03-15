@@ -105,3 +105,4 @@ YAML:
 - Кнопки добавлены как ускорение (не замена команд) для: `!ticket`, `!tickets`, `!staffstatus`.
 - Опасные действия через 2 шага подтверждения: закрытие/перенос тикета, suspend/restore staff.
 - При устаревшем payload бот отвечает коротко и безопасно (без падений/дублей).
+- Stage-2: добавлены utility-кнопки для `!check` (lookup + punish preset/confirm), `!staffdiscipline` (status/revokecheck/suspend/restore) и фильтры для `!audit`/`!audit recent`.

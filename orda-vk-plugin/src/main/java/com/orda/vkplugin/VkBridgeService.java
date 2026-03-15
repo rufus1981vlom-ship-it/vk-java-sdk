@@ -416,6 +416,21 @@ public class VkBridgeService {
                 return;
             }
 
+            if (action.startsWith("check_")) {
+                requireAndRun(peerId, actor.level, "tickets", () -> handleCheckCallback(peerId, actor.nickname, actor.level, userId, eventId, action, payload));
+                return;
+            }
+
+            if (action.startsWith("sdisc_")) {
+                requireAndRun(peerId, actor.level, "discipline", () -> handleStaffDisciplineCallback(peerId, actor.nickname, actor.level, userId, eventId, action, payload));
+                return;
+            }
+
+            if (action.equals("audit_filter") || action.equals("audit_refresh")) {
+                requireAndRun(peerId, actor.level, "audit", () -> handleAuditCallback(peerId, actor.nickname, actor.level, userId, eventId, action, payload));
+                return;
+            }
+
             answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
         } catch (Exception e) {
             answerCallback(peerId, userId, eventId, "⚠ Ошибка действия");
@@ -465,15 +480,15 @@ public class VkBridgeService {
         if (lower.startsWith("!r ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleTemplateReply(peerId, actorNick, text)); return; }
 
         if (lower.startsWith("!check tech ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleCheckTech(peerId, text)); return; }
-        if (lower.startsWith("!check ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleCheck(peerId, text)); return; }
+        if (lower.startsWith("!check ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleCheck(peerId, actorLevel, actorNick, text)); return; }
         if (lower.startsWith("!lookup ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleLookup(peerId, text)); return; }
         if (lower.startsWith("!staffstats ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleStaffStats(peerId, text)); return; }
         if (lower.startsWith("!staffstatus ")) { requireAndRun(peerId, actorLevel, "audit", () -> handleStaffStatus(peerId, actorLevel, text)); return; }
         if (lower.startsWith("!staffrevokecheck ")) { requireAndRun(peerId, actorLevel, "audit", () -> handleStaffRevokeCheck(peerId, text)); return; }
 
-        if (lower.equals("!audit") || lower.startsWith("!audit ")) { requireAndRun(peerId, actorLevel, "audit", () -> handleAudit(peerId, text)); return; }
+        if (lower.equals("!audit") || lower.startsWith("!audit ")) { requireAndRun(peerId, actorLevel, "audit", () -> handleAudit(peerId, actorLevel, text)); return; }
         if (lower.startsWith("!staffnote ") || lower.startsWith("!staffwarn ") || lower.startsWith("!staffreprimand ") || lower.startsWith("!staffdiscipline ") || lower.startsWith("!staffforgive ") || lower.startsWith("!staffsuspend ") || lower.startsWith("!staffrestore ")) {
-            requireAndRun(peerId, actorLevel, "discipline", () -> handleDiscipline(peerId, actorNick, text));
+            requireAndRun(peerId, actorLevel, "discipline", () -> handleDiscipline(peerId, actorNick, actorLevel, text));
             return;
         }
 
@@ -683,7 +698,7 @@ public class VkBridgeService {
             return;
         }
         if (action.equals("staffdiscipline_open")) {
-            handleDiscipline(peerId, actorNick, "!staffdiscipline " + key);
+            handleDiscipline(peerId, actorNick, actorLevel, "!staffdiscipline " + key);
             answerCallback(peerId, userId, eventId, "✅ Карточка discipline");
             return;
         }
@@ -714,7 +729,7 @@ public class VkBridgeService {
                 answerCallback(peerId, userId, eventId, "ℹ Staff уже отстранён");
                 return;
             }
-            handleDiscipline(peerId, actorNick, "!staffsuspend " + key + " via_button");
+            handleDiscipline(peerId, actorNick, actorLevel, "!staffsuspend " + key + " via_button");
             answerCallback(peerId, userId, eventId, "✅ Staff отстранён");
             handleStaffStatus(peerId, actorLevel, "!staffstatus " + key);
             return;
@@ -731,13 +746,183 @@ public class VkBridgeService {
                 answerCallback(peerId, userId, eventId, "ℹ Staff уже ACTIVE");
                 return;
             }
-            handleDiscipline(peerId, actorNick, "!staffrestore " + key + " via_button");
+            handleDiscipline(peerId, actorNick, actorLevel, "!staffrestore " + key + " via_button");
             answerCallback(peerId, userId, eventId, "✅ Staff восстановлен");
             handleStaffStatus(peerId, actorLevel, "!staffstatus " + key);
             return;
         }
 
         answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
+    }
+
+    private void handleCheckCallback(int peerId, String actorNick, int actorLevel, long userId, String eventId, String action, JsonObject payload) {
+        String nick = payloadStr(payload, "n", "");
+        if (nick.isEmpty()) {
+            answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
+            return;
+        }
+
+        if (action.equals("check_lookup")) {
+            handleLookup(peerId, "!lookup " + nick + " 8");
+            answerCallback(peerId, userId, eventId, "✅ Lookup открыт");
+            return;
+        }
+        if (action.equals("check_tickets")) {
+            handleLookup(peerId, "!lookup " + nick + " tickets");
+            answerCallback(peerId, userId, eventId, "✅ Tickets summary");
+            return;
+        }
+        if (action.equals("check_reports")) {
+            handleLookup(peerId, "!lookup " + nick + " punish");
+            answerCallback(peerId, userId, eventId, "✅ Reports/Punish summary");
+            return;
+        }
+
+        if (action.equals("check_punish_menu")) {
+            if (!botAccessPolicy.hasAccess(actorLevel, "punish")) {
+                answerCallback(peerId, userId, eventId, "⛔ Недостаточно прав");
+                return;
+            }
+            String type = payloadStr(payload, "t", "mute");
+            sendMessage(peerId, "Выберите пресет для " + type.toUpperCase(Locale.ROOT) + " " + nick, buildCheckPunishPresetKeyboard(nick, type));
+            answerCallback(peerId, userId, eventId, "✅ Выберите пресет");
+            return;
+        }
+
+        if (action.equals("check_preset_prepare")) {
+            if (!botAccessPolicy.hasAccess(actorLevel, "punish")) {
+                answerCallback(peerId, userId, eventId, "⛔ Недостаточно прав");
+                return;
+            }
+            String type = payloadStr(payload, "t", "mute");
+            String preset = payloadStr(payload, "p", "");
+            if (preset.equals("custom")) {
+                sendMessage(peerId, "Используй: !" + type + " " + nick + " <time reason>");
+                answerCallback(peerId, userId, eventId, "✅ Подсказка отправлена");
+                return;
+            }
+            String resolved = resolveConfiguredPreset(type, preset);
+            if (resolved == null) {
+                answerCallback(peerId, userId, eventId, "⚠ Preset больше недоступен");
+                return;
+            }
+            sendMessage(peerId, "Подтвердить: !" + type + " " + nick + " " + preset + " ?", buildCheckPunishConfirmKeyboard(nick, type, preset));
+            answerCallback(peerId, userId, eventId, "⚠ Требуется подтверждение");
+            return;
+        }
+
+        if (action.equals("check_punish_confirm")) {
+            if (!botAccessPolicy.hasAccess(actorLevel, "punish")) {
+                answerCallback(peerId, userId, eventId, "⛔ Недостаточно прав");
+                return;
+            }
+            String type = payloadStr(payload, "t", "mute");
+            String preset = payloadStr(payload, "p", "");
+            String resolved = resolveConfiguredPreset(type, preset);
+            if (resolved == null) {
+                answerCallback(peerId, userId, eventId, "⚠ Preset больше недоступен");
+                return;
+            }
+            long recent = recentActivePunishCount(nick, type, resolved, Duration.ofMinutes(2));
+            if (recent > 0) {
+                answerCallback(peerId, userId, eventId, "ℹ Действие уже выполнено недавно");
+                return;
+            }
+            handlePunish(peerId, actorNick, "!" + type + " " + nick + " " + preset, type);
+            answerCallback(peerId, userId, eventId, "✅ Наказание отправлено");
+            return;
+        }
+
+        answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
+    }
+
+    private void handleStaffDisciplineCallback(int peerId, String actorNick, int actorLevel, long userId, String eventId, String action, JsonObject payload) {
+        String key = payloadStr(payload, "k", "");
+        if (key.isEmpty()) {
+            answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
+            return;
+        }
+        if (action.equals("sdisc_status")) {
+            handleStaffStatus(peerId, actorLevel, "!staffstatus " + key);
+            answerCallback(peerId, userId, eventId, "✅ Status открыт");
+            return;
+        }
+        if (action.equals("sdisc_revokecheck")) {
+            handleStaffRevokeCheck(peerId, "!staffrevokecheck " + key);
+            answerCallback(peerId, userId, eventId, "✅ RevokeCheck открыт");
+            return;
+        }
+        if (action.equals("sdisc_warn_hint")) {
+            sendMessage(peerId, "Используй: !staffwarn " + key + " <причина>");
+            answerCallback(peerId, userId, eventId, "✅ Подсказка отправлена");
+            return;
+        }
+        if (action.equals("sdisc_reprimand_hint")) {
+            sendMessage(peerId, "Используй: !staffreprimand " + key + " <причина>");
+            answerCallback(peerId, userId, eventId, "✅ Подсказка отправлена");
+            return;
+        }
+        if (action.equals("sdisc_suspend_prepare")) {
+            sendMessage(peerId, "Подтвердить suspend для " + key + "?", buildStaffDisciplineSuspendConfirmKeyboard(key));
+            answerCallback(peerId, userId, eventId, "⚠ Требуется подтверждение");
+            return;
+        }
+        if (action.equals("sdisc_suspend_confirm")) {
+            StaffStateRecord st = getStaffState(key);
+            if (st.status == StaffStatus.SUSPENDED) {
+                answerCallback(peerId, userId, eventId, "ℹ Staff уже отстранён");
+                return;
+            }
+            handleDiscipline(peerId, actorNick, actorLevel, "!staffsuspend " + key + " via_button");
+            answerCallback(peerId, userId, eventId, "✅ Staff отстранён");
+            return;
+        }
+        if (action.equals("sdisc_restore_prepare")) {
+            sendMessage(peerId, "Подтвердить restore для " + key + "?", buildStaffDisciplineRestoreConfirmKeyboard(key));
+            answerCallback(peerId, userId, eventId, "⚠ Требуется подтверждение");
+            return;
+        }
+        if (action.equals("sdisc_restore_confirm")) {
+            StaffStateRecord st = getStaffState(key);
+            if (st.status != StaffStatus.SUSPENDED) {
+                answerCallback(peerId, userId, eventId, "ℹ Staff уже ACTIVE");
+                return;
+            }
+            handleDiscipline(peerId, actorNick, actorLevel, "!staffrestore " + key + " via_button");
+            answerCallback(peerId, userId, eventId, "✅ Staff восстановлен");
+            return;
+        }
+        answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
+    }
+
+    private void handleAuditCallback(int peerId, String actorNick, int actorLevel, long userId, String eventId, String action, JsonObject payload) {
+        String mode = payloadStr(payload, "m", "recent");
+        if (action.equals("audit_refresh")) {
+            handleAudit(peerId, actorLevel, "!audit " + mode);
+            answerCallback(peerId, userId, eventId, "✅ Audit обновлён");
+            return;
+        }
+        if (action.equals("audit_filter")) {
+            handleAudit(peerId, actorLevel, "!audit " + mode);
+            answerCallback(peerId, userId, eventId, "✅ Фильтр применён");
+            return;
+        }
+        answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
+    }
+
+    private String payloadStr(JsonObject payload, String key, String def) {
+        return payload != null && payload.has(key) ? payload.get(key).getAsString() : def;
+    }
+
+    private String resolveConfiguredPreset(String type, String key) {
+        Map<String, String> source = type.equals("mute") ? mutePresets : type.equals("ban") ? banPresets : warnPresets;
+        return source.get(key.toLowerCase(Locale.ROOT));
+    }
+
+    private long recentActivePunishCount(String nick, String type, String resolvedPayload, Duration within) {
+        Instant border = Instant.now().minus(within);
+        return punishments.stream().filter(p -> p.target.equalsIgnoreCase(nick) && p.type.equalsIgnoreCase(type)
+                && p.reason.equalsIgnoreCase(resolvedPayload) && !p.reverted && p.time.isAfter(border)).count();
     }
 
     private synchronized void handleTake(int peerId, String actor, String text) {
@@ -872,7 +1057,7 @@ public class VkBridgeService {
         handleReply(peerId, actor, "!reply " + t.id + " " + msg);
     }
 
-    private void handleCheck(int peerId, String text) {
+    private void handleCheck(int peerId, int actorLevel, String actorNick, String text) {
         String[] p = text.split("\\s+");
         if (p.length != 2) { sendMessage(peerId, "Использование: !check <nick>"); return; }
         String nick = p[1];
@@ -895,7 +1080,7 @@ public class VkBridgeService {
         rows.add("Группа/роль: " + role);
         rows.add("Активные наказания: " + activePun);
         rows.add("Тикеты/репорты: " + supportCnt + "/" + reportCnt);
-        sendMessage(peerId, String.join("\n", rows));
+        sendMessage(peerId, String.join("\n", rows), buildCheckKeyboard(nick, actorLevel));
     }
 
     private String resolveRole(String nick, Player online) {
@@ -1098,7 +1283,7 @@ public class VkBridgeService {
         return nick == null || nick.isEmpty() ? key : nick + " [" + key + "]";
     }
 
-    private void handleAudit(int peerId, String text) {
+    private void handleAudit(int peerId, int actorLevel, String text) {
         String[] p = text.split("\\s+");
         String mode = p.length >= 2 ? p[1].toLowerCase(Locale.ROOT) : "recent";
         List<String> rows = new ArrayList<>();
@@ -1111,14 +1296,27 @@ public class VkBridgeService {
             else if (mode.equals("ticket") && p.length >= 3 && r.scope.equals("ticket") && r.action.contains("#" + p[2])) rows.add(formatAgo(r.time) + " | " + r.actor + " | " + r.action);
             else if (mode.equals("player") && p.length >= 3 && r.action.toLowerCase(Locale.ROOT).contains(p[2].toLowerCase(Locale.ROOT))) rows.add(formatAgo(r.time) + " | " + r.actor + " | " + r.action);
             else if (mode.equals("punish") && p.length >= 3 && r.scope.equals("punish") && r.action.toLowerCase(Locale.ROOT).contains(p[2].toLowerCase(Locale.ROOT))) rows.add(formatAgo(r.time) + " | " + r.actor + " | " + r.action);
+            else if (mode.equals("discipline") && isAuditModeMatch(r, "discipline")) rows.add(formatAgo(r.time) + " | " + r.actor + " | " + r.action);
+            else if (mode.equals("raw") && isAuditModeMatch(r, "raw")) rows.add(formatAgo(r.time) + " | " + r.actor + " | " + r.action);
+            else if (mode.equals("admin") && isAuditModeMatch(r, "admin")) rows.add(formatAgo(r.time) + " | " + r.actor + " | " + r.action);
             else if (!mode.equals("recent") && !mode.equals("ticket") && !mode.equals("player") && !mode.equals("punish") && (r.actor.equalsIgnoreCase(mode) || r.actor.equalsIgnoreCase(p.length >= 2 ? p[1] : ""))) rows.add(formatAgo(r.time) + " | " + r.actor + " | " + r.action);
         }
 
         if (rows.size() == 1) rows.add("нет записей");
-        sendMessage(peerId, String.join("\n", rows));
+        sendMessage(peerId, String.join("\n", rows), buildAuditKeyboard(actorLevel, mode));
     }
 
-    private void handleDiscipline(int peerId, String actor, String text) {
+    private boolean isAuditModeMatch(AuditRecord r, String mode) {
+        String scope = r.scope == null ? "" : r.scope.toLowerCase(Locale.ROOT);
+        if (mode.equals("discipline")) return scope.contains("discipline") || scope.startsWith("staff_");
+        if (mode.equals("raw")) return scope.equals("raw");
+        if (mode.equals("admin")) return scope.equals("admin");
+        if (mode.equals("ticket")) return scope.equals("ticket");
+        if (mode.equals("punish")) return scope.equals("punish");
+        return false;
+    }
+
+    private void handleDiscipline(int peerId, String actor, int actorLevel, String text) {
         String[] p = text.split("\\s+", 3);
         String cmd = p[0].toLowerCase(Locale.ROOT);
 
@@ -1138,7 +1336,7 @@ public class VkBridgeService {
             }
             for (DisciplineRecord r : discipline) if (key.equalsIgnoreCase(r.target)) rows.add("#" + r.id + " " + r.type + " | " + (r.forgiven ? "forgiven" : "active") + " | " + r.text);
             if (rows.size() <= 4) rows.add("нет записей");
-            sendMessage(peerId, String.join("\n", rows));
+            sendMessage(peerId, String.join("\n", rows), buildStaffDisciplineKeyboard(key, state, actorLevel));
             return;
         }
 
@@ -1768,6 +1966,106 @@ public class VkBridgeService {
                     callbackButton("Restore", "primary", mapOfObj("a", "staff_restore_prepare", "k", key, "v", 1))
             ));
         }
+        return keyboardJson(buttons, false);
+    }
+
+    private String buildCheckKeyboard(String nick, int actorLevel) {
+        List<List<Map<String, Object>>> buttons = new ArrayList<>();
+        List<Map<String, Object>> first = new ArrayList<>();
+        first.add(callbackButton("Lookup", "secondary", mapOfObj("a", "check_lookup", "n", nick, "v", 1)));
+        first.add(callbackButton("Тикеты", "secondary", mapOfObj("a", "check_tickets", "n", nick, "v", 1)));
+        first.add(callbackButton("Репорты", "secondary", mapOfObj("a", "check_reports", "n", nick, "v", 1)));
+        buttons.add(first);
+
+        if (botAccessPolicy.hasAccess(actorLevel, "punish")) {
+            buttons.add(Arrays.asList(
+                    callbackButton("Mute", "secondary", mapOfObj("a", "check_punish_menu", "n", nick, "t", "mute", "v", 1)),
+                    callbackButton("Ban", "negative", mapOfObj("a", "check_punish_menu", "n", nick, "t", "ban", "v", 1)),
+                    callbackButton("Warn", "primary", mapOfObj("a", "check_punish_menu", "n", nick, "t", "warn", "v", 1))
+            ));
+        }
+        return keyboardJson(buttons, false);
+    }
+
+    private String buildCheckPunishPresetKeyboard(String nick, String type) {
+        Map<String, String> source = type.equals("mute") ? mutePresets : type.equals("ban") ? banPresets : warnPresets;
+        List<String> keys = new ArrayList<>(source.keySet());
+        Collections.sort(keys);
+        if (keys.size() > 3) keys = keys.subList(0, 3);
+
+        List<List<Map<String, Object>>> buttons = new ArrayList<>();
+        List<Map<String, Object>> presets = new ArrayList<>();
+        for (String k : keys) presets.add(callbackButton(k, "secondary", mapOfObj("a", "check_preset_prepare", "n", nick, "t", type, "p", k, "v", 1)));
+        if (!presets.isEmpty()) buttons.add(presets);
+        buttons.add(Arrays.asList(
+                callbackButton("Свой текст", "secondary", mapOfObj("a", "check_preset_prepare", "n", nick, "t", type, "p", "custom", "v", 1)),
+                callbackButton("Отмена", "secondary", mapOfObj("a", "check_lookup", "n", nick, "v", 1))
+        ));
+        return keyboardJson(buttons, true);
+    }
+
+    private String buildCheckPunishConfirmKeyboard(String nick, String type, String preset) {
+        List<List<Map<String, Object>>> buttons = new ArrayList<>();
+        buttons.add(Arrays.asList(
+                callbackButton("Подтвердить", "negative", mapOfObj("a", "check_punish_confirm", "n", nick, "t", type, "p", preset, "v", 1)),
+                callbackButton("Отмена", "secondary", mapOfObj("a", "check_punish_menu", "n", nick, "t", type, "v", 1))
+        ));
+        return keyboardJson(buttons, true);
+    }
+
+    private String buildStaffDisciplineKeyboard(String key, StaffStateRecord state, int actorLevel) {
+        List<List<Map<String, Object>>> buttons = new ArrayList<>();
+        buttons.add(Arrays.asList(
+                callbackButton("Status", "secondary", mapOfObj("a", "sdisc_status", "k", key, "v", 1)),
+                callbackButton("RevokeCheck", "secondary", mapOfObj("a", "sdisc_revokecheck", "k", key, "v", 1)),
+                callbackButton("Обновить", "positive", mapOfObj("a", "staffdiscipline_open", "k", key, "v", 1))
+        ));
+
+        if (botAccessPolicy.hasAccess(actorLevel, "discipline")) {
+            buttons.add(Arrays.asList(
+                    callbackButton("Warn", "secondary", mapOfObj("a", "sdisc_warn_hint", "k", key, "v", 1)),
+                    callbackButton("Reprimand", "secondary", mapOfObj("a", "sdisc_reprimand_hint", "k", key, "v", 1))
+            ));
+            List<Map<String, Object>> control = new ArrayList<>();
+            if (state.status != StaffStatus.SUSPENDED) control.add(callbackButton("Suspend", "negative", mapOfObj("a", "sdisc_suspend_prepare", "k", key, "v", 1)));
+            if (state.status == StaffStatus.SUSPENDED) control.add(callbackButton("Restore", "primary", mapOfObj("a", "sdisc_restore_prepare", "k", key, "v", 1)));
+            if (!control.isEmpty()) buttons.add(control);
+        }
+        return keyboardJson(buttons, false);
+    }
+
+    private String buildStaffDisciplineSuspendConfirmKeyboard(String key) {
+        List<List<Map<String, Object>>> buttons = new ArrayList<>();
+        buttons.add(Arrays.asList(
+                callbackButton("Подтвердить", "negative", mapOfObj("a", "sdisc_suspend_confirm", "k", key, "v", 1)),
+                callbackButton("Отмена", "secondary", mapOfObj("a", "staffdiscipline_open", "k", key, "v", 1))
+        ));
+        return keyboardJson(buttons, true);
+    }
+
+    private String buildStaffDisciplineRestoreConfirmKeyboard(String key) {
+        List<List<Map<String, Object>>> buttons = new ArrayList<>();
+        buttons.add(Arrays.asList(
+                callbackButton("Подтвердить", "primary", mapOfObj("a", "sdisc_restore_confirm", "k", key, "v", 1)),
+                callbackButton("Отмена", "secondary", mapOfObj("a", "staffdiscipline_open", "k", key, "v", 1))
+        ));
+        return keyboardJson(buttons, true);
+    }
+
+    private String buildAuditKeyboard(int actorLevel, String mode) {
+        if (!botAccessPolicy.hasAccess(actorLevel, "audit")) return null;
+        String active = mode == null || mode.isEmpty() ? "recent" : mode.toLowerCase(Locale.ROOT);
+        List<List<Map<String, Object>>> buttons = new ArrayList<>();
+        buttons.add(Arrays.asList(
+                callbackButton("Тикеты", active.equals("ticket") ? "primary" : "secondary", mapOfObj("a", "audit_filter", "m", "ticket", "v", 1)),
+                callbackButton("Наказания", active.equals("punish") ? "primary" : "secondary", mapOfObj("a", "audit_filter", "m", "punish", "v", 1)),
+                callbackButton("Discipline", active.equals("discipline") ? "primary" : "secondary", mapOfObj("a", "audit_filter", "m", "discipline", "v", 1))
+        ));
+        buttons.add(Arrays.asList(
+                callbackButton("Raw", active.equals("raw") ? "primary" : "secondary", mapOfObj("a", "audit_filter", "m", "raw", "v", 1)),
+                callbackButton("Admin", active.equals("admin") ? "primary" : "secondary", mapOfObj("a", "audit_filter", "m", "admin", "v", 1)),
+                callbackButton("Обновить", "positive", mapOfObj("a", "audit_refresh", "m", active, "v", 1))
+        ));
         return keyboardJson(buttons, false);
     }
 
