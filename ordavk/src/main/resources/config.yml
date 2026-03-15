@@ -1,0 +1,60 @@
+general:
+  # ru | en | kk
+  language: ru
+
+vk:
+  token: ""
+  group-id: 0
+  api-version: "5.199"
+  poll-interval-seconds: 2
+  protected-users: []
+  allow-protected-removal: false
+
+  chats:
+    - id: 2000000001
+      mode: amanage
+    - id: 2000000004
+      mode: mmanage
+    - id: 2000000002
+      mode: events
+    - id: 2000000003
+      mode: support
+
+  cmd-policy:
+    mode: whitelist
+    allowed: ["say", "list"]
+    blocked: ["op", "deop", "stop", "reload"]
+    allowed-roles: ["chief"]
+
+support:
+  cooldown-seconds: 60
+  max-open-tickets-per-player: 3
+  # Задержка доставки оффлайн-ответа после входа игрока (40..60 тиков)
+  join-delivery-delay-ticks: 50
+  auto-close-on-reply: false
+
+permissions:
+  # гибкая таблица минимальных ролей для команд
+  command-min-role:
+    manage.help: helper
+    manage.online: helper
+    manage.status: helper
+    manage.check: helper
+
+    manage.kick: moder
+    manage.mute: moder
+    manage.ban: moder
+
+    manage.admins: admin
+    manage.admin.info: admin
+    manage.admin.add: admin
+    manage.admin.set: admin
+    manage.admin.remove: admin
+    manage.admin.rname: admin
+
+    manage.cmd: chief
+
+    support.list: helper
+    support.info: helper
+    support.close: helper
+    support.reply: helper

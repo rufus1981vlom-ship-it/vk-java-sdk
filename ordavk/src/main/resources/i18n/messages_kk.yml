@@ -1,0 +1,59 @@
+common.done: "✅ Дайын"
+common.not_enough_permission: "❌ Құқық жеткіліксіз"
+common.yes: "иә"
+common.no: "жоқ"
+manage.help: "Командалар:
+!help
+!online
+!status
+!check <nick>
+!kick <nick> <reason>
+!mute <nick> <time> <reason>
+!ban <nick> [time] <reason>
+!admins
+!admin info <vk_id>
+!admin add <vk_id> <nick> <role>
+!admin set <vk_id> <nick> <role>
+!rname <vk_id> <nick>
+!рнейм <vk_id> <nick>
+!admin remove <vk_id>
+!cmd <command>"
+manage.online: "Онлайн: {count}\n{players}"
+manage.online.empty: "ешкім жоқ"
+manage.status: "Сервер күйі\nОнлайн: {online}/{max}\nTPS: {tps}\nЖад: {memory}\nUptime: {uptime}"
+manage.check: "Ойыншы: {nick}\nКүйі: {status}\nUUID: {uuid}\nТоп: {group}\nСоңғы кіру: {last_seen}\nПинг: {ping}"
+manage.check.online: "онлайн"
+manage.check.offline: "оффлайн"
+manage.usage.check: "❌ Қолдану: !check <nick>"
+manage.usage.kick: "❌ Қолдану: !kick <player> <reason>"
+manage.usage.mute: "❌ Қолдану: !mute <player> <time> <reason>"
+manage.usage.ban: "❌ Қолдану: !ban <player> [time] <reason>"
+manage.usage.admin_info: "❌ Қолдану: !admin info <vk_id>"
+manage.usage.admin_add: "❌ Қолдану: !admin add <vk_id> <nick> <role>"
+manage.usage.admin_set: "❌ Қолдану: !admin set <vk_id> <nick> <role>"
+manage.usage.admin_remove: "❌ Қолдану: !admin remove <vk_id>"
+manage.vk_id_numeric: "❌ vk_id сан болуы керек"
+manage.invalid_role: "❌ Рөл қате. Мынау қолжетімді: helper, moder, admin, staff, chief"
+manage.admin_not_found: "❌ Админ табылмады"
+manage.target_higher_or_equal: "❌ Тең немесе жоғары рөлді алып тастауға болмайды"
+manage.empty_command: "❌ Бос команда"
+manage.cmd_blocked_by_policy: "❌ Команда саясатпен бұғатталған"
+manage.executed: "✅ Команда орындалды: {cmd}"
+manage.admin_info: "VK ID: {vk}\nНик: {nick}\nРөлі: {role}\nҚұрылған: {created}\nЖаңартылған: {updated}"
+manage.admin_added: "✅ Админ қосылды: vk={vk}, nick={nick}, role={role}"
+manage.admin_set: "✅ Рөл жаңартылды: vk={vk}, role={role}"
+manage.usage.admin_rname: "❌ Қолдану: !rname <vk_id> <nick>"
+manage.admin_renamed: "✅ Ник жаңартылды: vk={vk}, nick={nick}"
+manage.admin_removed.summary: "✅ Админ өшірілді\nVK ID: {vk}\nНик: {nick}\nОйын тобы reset: {lp}\nЧаттардан өшірілді: {removed}\nСәтсіз: {failed}\nЧатта табылмады: {not_found}\nБот құқығы жетпеді: {no_permissions}\nVK API қателері: {api_errors}"
+manage.unknown: "❌ Белгісіз manage командасы"
+support.reply_sent: "✅ {player} ойыншысына #{id} тикет бойынша жауап жіберілді"
+support.reply_saved: "💾 Ойыншы оффлайн, жауап сақталды"
+support.not_found: "❌ Тикет табылмады"
+support.unknown: "❌ Белгісіз support командасы"
+support.malformed: "❌ support командасының форматы қате"
+player.support.enter_text: "[Support] Сұрау мәтінін енгізіңіз."
+player.support.cooldown: "[Support] Келесі сұрауға дейін күтіңіз."
+player.support.max_open: "[Support] Ашық тикеттер саны тым көп."
+player.support.sent: "[Support] Сұрау жіберілді. Тикет: #{id}"
+player.support.reply: "[Support] Жауап: {text}"
+player.support.offline_reply: "[Support] #{id} тикетке сақталған жауап: {text}"
