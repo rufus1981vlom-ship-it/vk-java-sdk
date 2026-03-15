@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>ordacraft.vk</groupId>
   <artifactId>ordavk</artifactId>
-  <version>1.0.0</version>
+  <version>2.0Pro</version>
   <name>OrdaVK</name>
   <properties>
     <maven.compiler.source>17</maven.compiler.source>
