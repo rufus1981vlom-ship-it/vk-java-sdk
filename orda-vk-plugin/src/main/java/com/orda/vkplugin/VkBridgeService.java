@@ -411,6 +411,8 @@ public class VkBridgeService {
         if (lower.startsWith("!check ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleCheck(peerId, text)); return; }
         if (lower.startsWith("!lookup ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleLookup(peerId, text)); return; }
         if (lower.startsWith("!staffstats ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleStaffStats(peerId, text)); return; }
+        if (lower.startsWith("!staffstatus ")) { requireAndRun(peerId, actorLevel, "audit", () -> handleStaffStatus(peerId, text)); return; }
+        if (lower.startsWith("!staffrevokecheck ")) { requireAndRun(peerId, actorLevel, "audit", () -> handleStaffRevokeCheck(peerId, text)); return; }
 
         if (lower.equals("!audit") || lower.startsWith("!audit ")) { requireAndRun(peerId, actorLevel, "audit", () -> handleAudit(peerId, text)); return; }
         if (lower.startsWith("!staffnote ") || lower.startsWith("!staffwarn ") || lower.startsWith("!staffreprimand ") || lower.startsWith("!staffdiscipline ") || lower.startsWith("!staffforgive ") || lower.startsWith("!staffsuspend ") || lower.startsWith("!staffrestore ")) {
@@ -469,7 +471,7 @@ public class VkBridgeService {
         if (showSupport) rows.add("Support: !tickets !ticket !reply !close !take !rlist");
         if (showMod) rows.add("Mod: !move !assign !unassign !reopen !check !lookup");
         if (showPunish) rows.add("Punish: !mute !ban !warn !unmute !pardon !punishlog");
-        if (showAudit) rows.add("Audit: !audit recent|ticket|player|punish + discipline");
+        if (showAudit) rows.add("Audit: !audit ... !staffstatus !staffrevokecheck + discipline");
         if (showAdmin) rows.add("Admin: !admin set/level/remove !rnick !cmd !vkban/!vkick/!vkunban");
 
         return String.join("\n", rows);
@@ -800,6 +802,85 @@ public class VkBridgeService {
         sendMessage(peerId, String.join("\n", rows));
     }
 
+    private void handleStaffStatus(int peerId, String text) {
+        String[] p = text.split("\\s+");
+        if (p.length != 2) { sendMessage(peerId, "Использование: !staffstatus <vk_id|nick>"); return; }
+        String key = canonicalStaffKey(p[1]);
+        StaffStateRecord state = getStaffState(key);
+
+        int activeWarnings = countActiveWarnings(key);
+        int activeReprimands = countActiveReprimands(key);
+        String role = resolveStaffRole(key, state.nick);
+        String flag = state.status == StaffStatus.SUSPENDED ? "suspended" : activeReprimands > 0 ? "reprimanded" : activeWarnings > 0 ? "warned" : "ok";
+
+        List<String> rows = new ArrayList<>();
+        rows.add("👤 Staff: " + formatStaffLabel(key, state.nick));
+        rows.add("Роль: " + role);
+        rows.add("Статус: " + state.status);
+        rows.add("Активные предупреждения: " + activeWarnings);
+        rows.add("Активные выговоры: " + activeReprimands + "/" + autoSuspendThreshold);
+        rows.add("Quality flag: " + flag);
+
+        if (state.status == StaffStatus.SUSPENDED) {
+            rows.add("Suspend: " + state.suspendedSource);
+            rows.add("Причина: " + state.suspendedReason);
+            rows.add("Когда: " + formatLastSeen(state.suspendedAt.toEpochMilli(), false));
+            rows.add("Кем: " + state.suspendedBy);
+        }
+
+        sendMessage(peerId, String.join("\n", rows.subList(0, Math.min(rows.size(), 8))));
+    }
+
+    private void handleStaffRevokeCheck(int peerId, String text) {
+        String[] p = text.split("\\s+");
+        if (p.length != 2) { sendMessage(peerId, "Использование: !staffrevokecheck <vk_id|nick>"); return; }
+        String key = canonicalStaffKey(p[1]);
+        StaffStateRecord state = getStaffState(key);
+
+        String vkStatus = state.lastVkRemoveStatus == null || state.lastVkRemoveStatus.isEmpty() ? "UNKNOWN" : state.lastVkRemoveStatus;
+        String serverStatus = state.lastServerRevokeStatus == null || state.lastServerRevokeStatus.isEmpty() ? "UNKNOWN" : state.lastServerRevokeStatus;
+        String source = state.suspendedSource == null || state.suspendedSource.isEmpty() ? "NOT_APPLICABLE" : state.suspendedSource;
+
+        List<String> rows = new ArrayList<>();
+        rows.add("🔎 RevokeCheck: " + formatStaffLabel(key, state.nick));
+        rows.add("Status: " + state.status);
+        rows.add("VK remove: " + vkStatus + (state.lastVkRemovedChats >= 0 ? " (" + state.lastVkRemovedChats + " chats)" : ""));
+        rows.add("Server revoke: " + serverStatus);
+        if (state.lastServerFailedCommands > 0) rows.add("Failed revoke commands: " + state.lastServerFailedCommands);
+        rows.add("Server rights actual state: UNKNOWN");
+        if (state.status == StaffStatus.SUSPENDED) rows.add("Last suspend: " + formatLastSeen(state.suspendedAt.toEpochMilli(), false));
+        rows.add("Source: " + source);
+        sendMessage(peerId, String.join("\n", rows));
+    }
+
+    private int countActiveWarnings(String key) {
+        int c = 0;
+        for (DisciplineRecord d : discipline) if (key.equalsIgnoreCase(d.target) && d.type == DisciplineType.WARNING && !d.forgiven) c++;
+        return c;
+    }
+
+    private String resolveStaffRole(String key, String nick) {
+        try {
+            long id = Long.parseLong(key);
+            AdminData data = admins.get(id);
+            if (data != null) return "lvl " + data.level;
+        } catch (Exception ignored) {}
+        if (nick != null && !nick.isEmpty()) {
+            for (AdminData d : admins.values()) if (nick.equalsIgnoreCase(d.nickname)) return "lvl " + d.level;
+        }
+        return "staff";
+    }
+
+    private String formatStaffLabel(String key, String nick) {
+        Long vkId = null;
+        try { vkId = Long.parseLong(key); } catch (Exception ignored) {}
+        if (vkId != null) {
+            String mention = mentionById(vkId);
+            return mention + (nick != null && !nick.isEmpty() ? " (" + nick + ")" : "");
+        }
+        return nick == null || nick.isEmpty() ? key : nick + " [" + key + "]";
+    }
+
     private void handleAudit(int peerId, String text) {
         String[] p = text.split("\\s+");
         String mode = p.length >= 2 ? p[1].toLowerCase(Locale.ROOT) : "recent";
@@ -821,7 +902,7 @@ public class VkBridgeService {
     }
 
     private void handleDiscipline(int peerId, String actor, String text) {
-        String[] p = text.split("\s+", 3);
+        String[] p = text.split("\\s+", 3);
         String cmd = p[0].toLowerCase(Locale.ROOT);
 
         if (cmd.equals("!staffdiscipline")) {
@@ -879,6 +960,9 @@ public class VkBridgeService {
             state.updatedAt = Instant.now();
             dbStaffState(key, state);
             if (autoSuspendRestoreServerRights && !autoSuspendRestoreCommands.isEmpty()) executeServerCommands(key, state.nick, state.uuid, autoSuspendRestoreCommands, "STAFF_SERVER_RIGHTS_RESTORED", actor);
+            state.lastServerRevokeStatus = "NOT_APPLICABLE";
+            state.lastServerFailedCommands = 0;
+            dbStaffState(key, state);
             audit("STAFF_RESTORED", actor, "target=" + key + " reason=" + reason);
             notifySuspendChats("✅ Staff восстановлен: " + key + " | reason: " + reason);
             sendMessage(peerId, "✅ Staff восстановлен: " + key + " | права на сервере: " + (autoSuspendRestoreServerRights ? "restore-commands запущены" : "не восстанавливались автоматически"));
@@ -926,11 +1010,13 @@ public class VkBridgeService {
         }
 
         int removedChats = 0;
+        int attemptedChats = 0;
         boolean vkPartial = false;
         if (autoSuspendRemoveVkChats) {
             Long vkId = resolveVkIdForStaff(key, state);
             if (vkId != null) {
                 for (Integer chatId : chatIds.values()) {
+                    attemptedChats++;
                     boolean ok = kickFromChat(vkId, chatId);
                     if (ok) removedChats++; else vkPartial = true;
                 }
@@ -939,8 +1025,11 @@ public class VkBridgeService {
         }
 
         boolean revokePartial = false;
+        int revokeFailed = 0;
         if (autoSuspendRevokeServerRights && !autoSuspendRevokeCommands.isEmpty()) {
-            revokePartial = !executeServerCommands(key, state.nick, state.uuid, autoSuspendRevokeCommands, "STAFF_SERVER_RIGHTS_REVOKED", actor);
+            ServerCommandExecResult exec = executeServerCommands(key, state.nick, state.uuid, autoSuspendRevokeCommands, "STAFF_SERVER_RIGHTS_REVOKED", actor);
+            revokePartial = !exec.ok;
+            revokeFailed = exec.failed;
         }
 
         state.status = StaffStatus.SUSPENDED;
@@ -948,6 +1037,10 @@ public class VkBridgeService {
         state.suspendedBy = actor;
         state.suspendedReason = reason;
         state.suspendedSource = source;
+        state.lastVkRemovedChats = removedChats;
+        state.lastVkRemoveStatus = autoSuspendRemoveVkChats ? (attemptedChats == 0 ? "NOT_APPLICABLE" : (vkPartial ? "PARTIAL" : "OK")) : "NOT_APPLICABLE";
+        state.lastServerRevokeStatus = autoSuspendRevokeServerRights ? (revokePartial ? "PARTIAL" : "OK") : "NOT_APPLICABLE";
+        state.lastServerFailedCommands = revokeFailed;
         state.updatedAt = Instant.now();
         dbStaffState(key, state);
 
@@ -960,8 +1053,9 @@ public class VkBridgeService {
         return new SuspendResult(true, msg);
     }
 
-    private boolean executeServerCommands(String key, String nick, String uuid, List<String> commands, String auditType, String actor) {
+    private ServerCommandExecResult executeServerCommands(String key, String nick, String uuid, List<String> commands, String auditType, String actor) {
         boolean allOk = true;
+        int failed = 0;
         for (String tpl : commands) {
             String cmd = tpl.replace("{nick}", nick == null ? key : nick)
                     .replace("{vk_id}", key)
@@ -972,10 +1066,11 @@ public class VkBridgeService {
                 audit(auditType, actor, "target=" + key + " cmd=" + cmd + " result=queued");
             } catch (Exception e) {
                 allOk = false;
+                failed++;
                 audit(auditType, actor, "target=" + key + " cmd=" + cmd + " result=error:" + e.getMessage());
             }
         }
-        return allOk;
+        return new ServerCommandExecResult(allOk, failed);
     }
 
     private void notifySuspendChats(String message) {
@@ -1492,7 +1587,11 @@ public class VkBridgeService {
                 st.executeUpdate("create table if not exists discipline(id integer primary key, ts integer, target text, type text, text text, actor text, forgiven integer)");
                 st.executeUpdate("create table if not exists pending_delivery(id integer primary key autoincrement, uuid text, ticket_id integer, body text, created_ms integer, delivered integer default 0)");
                 st.executeUpdate("create table if not exists staff_metrics(k text primary key, v text)");
-                st.executeUpdate("create table if not exists staff_state(staff_key text primary key, nick text, uuid text, status text, suspended_at integer, suspended_by text, suspended_reason text, suspended_source text, updated_at integer)");
+                st.executeUpdate("create table if not exists staff_state(staff_key text primary key, nick text, uuid text, status text, suspended_at integer, suspended_by text, suspended_reason text, suspended_source text, updated_at integer, last_vk_remove_status text, last_vk_removed_chats integer, last_server_revoke_status text, last_server_failed_commands integer)");
+                try { st.executeUpdate("alter table staff_state add column last_vk_remove_status text"); } catch (Exception ignored) {}
+                try { st.executeUpdate("alter table staff_state add column last_vk_removed_chats integer"); } catch (Exception ignored) {}
+                try { st.executeUpdate("alter table staff_state add column last_server_revoke_status text"); } catch (Exception ignored) {}
+                try { st.executeUpdate("alter table staff_state add column last_server_failed_commands integer"); } catch (Exception ignored) {}
             }
         } catch (Exception e) {
             plugin.getLogger().warning("SQLite init failed: " + e.getMessage());
@@ -1558,6 +1657,10 @@ public class VkBridgeService {
                     stRec.suspendedReason = rs.getString("suspended_reason");
                     stRec.suspendedSource = rs.getString("suspended_source");
                     stRec.updatedAt = Instant.ofEpochMilli(rs.getLong("updated_at"));
+                    stRec.lastVkRemoveStatus = rs.getString("last_vk_remove_status");
+                    stRec.lastVkRemovedChats = rs.getInt("last_vk_removed_chats");
+                    stRec.lastServerRevokeStatus = rs.getString("last_server_revoke_status");
+                    stRec.lastServerFailedCommands = rs.getInt("last_server_failed_commands");
                     staffStateByKey.put(stRec.key, stRec);
                 }
             }
@@ -1666,7 +1769,7 @@ public class VkBridgeService {
 
     private void dbStaffState(String key, StaffStateRecord r) {
         try (Connection c = db()) {
-            PreparedStatement ps = c.prepareStatement("insert or replace into staff_state(staff_key,nick,uuid,status,suspended_at,suspended_by,suspended_reason,suspended_source,updated_at) values(?,?,?,?,?,?,?,?,?)");
+            PreparedStatement ps = c.prepareStatement("insert or replace into staff_state(staff_key,nick,uuid,status,suspended_at,suspended_by,suspended_reason,suspended_source,updated_at,last_vk_remove_status,last_vk_removed_chats,last_server_revoke_status,last_server_failed_commands) values(?,?,?,?,?,?,?,?,?,?,?,?,?)");
             ps.setString(1, key);
             ps.setString(2, r.nick == null ? "" : r.nick);
             ps.setString(3, r.uuid == null ? "" : r.uuid);
@@ -1676,6 +1779,10 @@ public class VkBridgeService {
             ps.setString(7, r.suspendedReason == null ? "" : r.suspendedReason);
             ps.setString(8, r.suspendedSource == null ? "" : r.suspendedSource);
             ps.setLong(9, r.updatedAt == null ? System.currentTimeMillis() : r.updatedAt.toEpochMilli());
+            ps.setString(10, r.lastVkRemoveStatus == null ? "" : r.lastVkRemoveStatus);
+            ps.setInt(11, r.lastVkRemovedChats);
+            ps.setString(12, r.lastServerRevokeStatus == null ? "" : r.lastServerRevokeStatus);
+            ps.setInt(13, r.lastServerFailedCommands);
             ps.executeUpdate();
         } catch (Exception ignored) {
         }
@@ -1724,6 +1831,10 @@ public class VkBridgeService {
         private String suspendedBy = "";
         private String suspendedReason = "";
         private String suspendedSource = "";
+        private String lastVkRemoveStatus = "UNKNOWN";
+        private int lastVkRemovedChats = -1;
+        private String lastServerRevokeStatus = "UNKNOWN";
+        private int lastServerFailedCommands = 0;
         private Instant updatedAt = Instant.now();
     }
 
@@ -1731,6 +1842,12 @@ public class VkBridgeService {
         private final boolean changed;
         private final String message;
         private SuspendResult(boolean changed, String message) { this.changed = changed; this.message = message; }
+    }
+
+    private static class ServerCommandExecResult {
+        private final boolean ok;
+        private final int failed;
+        private ServerCommandExecResult(boolean ok, int failed) { this.ok = ok; this.failed = failed; }
     }
 
     private static class AdminData {

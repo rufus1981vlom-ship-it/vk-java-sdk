@@ -60,6 +60,8 @@
 - `!staffforgive <record_id>`
 - `!staffsuspend <vk_id|nick> [reason]`
 - `!staffrestore <vk_id|nick> [reason]`
+- `!staffstatus <vk_id|nick>`
+- `!staffrevokecheck <vk_id|nick>`
 
 ### Punishments
 - `!mute <nick> <preset|time reason>`
@@ -96,3 +98,5 @@ YAML:
 - 3 активных `REPRIMAND` => автоматический `SUSPENDED`.
 - Бот удаляет staff из VK staff-чатов и запускает revoke-команды сервера из `config.yml`.
 - Восстановление только вручную: `!staffrestore` (по умолчанию без авто-возврата серверных прав).
+
+- Быстрый контроль: `!staffstatus` и `!staffrevokecheck` для senior staff.
