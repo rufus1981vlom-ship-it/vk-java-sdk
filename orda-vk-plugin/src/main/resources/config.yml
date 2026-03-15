@@ -70,3 +70,20 @@ vk:
     command-log-days: 7
     pending-days: 7
     closed-ticket-days: 14
+
+
+staff-discipline:
+  auto-suspend:
+    enabled: true
+    threshold: 3
+    count-types: ["REPRIMAND"]
+    remove-from-vk-chats: true
+    revoke-server-rights: true
+    server-revoke-commands:
+      - "lp user {nick} parent remove helper"
+      - "lp user {nick} parent remove moder"
+      - "lp user {nick} parent remove admin"
+    notify-chat-types: ["ADMMANAGE", "EVENTS"]
+    auto-restore-on-forgive: false
+    restore-server-rights: false
+    server-restore-commands: []

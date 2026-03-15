@@ -58,6 +58,8 @@
 - `!staffreprimand <vk_id|nick> <text>`
 - `!staffdiscipline <vk_id|nick>`
 - `!staffforgive <record_id>`
+- `!staffsuspend <vk_id|nick> [reason]`
+- `!staffrestore <vk_id|nick> [reason]`
 
 ### Punishments
 - `!mute <nick> <preset|time reason>`
@@ -88,3 +90,9 @@ SQLite (`ordavk-pro.db`):
 
 YAML:
 - config/presets/templates/policies/retention.
+
+
+## Auto-suspend staff
+- 3 активных `REPRIMAND` => автоматический `SUSPENDED`.
+- Бот удаляет staff из VK staff-чатов и запускает revoke-команды сервера из `config.yml`.
+- Восстановление только вручную: `!staffrestore` (по умолчанию без авто-возврата серверных прав).

@@ -84,6 +84,16 @@ public class VkBridgeService {
     private final Map<String, Long> antiSpam = new HashMap<>();
     private final Object stateLock = new Object();
 
+    private final Map<String, StaffStateRecord> staffStateByKey = new HashMap<>();
+    private boolean autoSuspendEnabled = true;
+    private int autoSuspendThreshold = 3;
+    private boolean autoSuspendRemoveVkChats = true;
+    private boolean autoSuspendRevokeServerRights = true;
+    private List<String> autoSuspendRevokeCommands = new ArrayList<>();
+    private List<String> autoSuspendRestoreCommands = new ArrayList<>();
+    private boolean autoSuspendRestoreServerRights = false;
+    private List<ChatType> autoSuspendNotifyChatTypes = new ArrayList<>();
+
     private int retentionCommandDays = 7;
     private int retentionPendingDays = 7;
     private int retentionClosedTicketsDays = 14;
@@ -170,6 +180,7 @@ public class VkBridgeService {
         botAccessPolicy = loadBotAccessPolicy();
         loadTemplatesAndPresets();
         loadRetention();
+        loadStaffDisciplinePolicy();
     }
 
     private void loadTemplatesAndPresets() {
@@ -198,6 +209,25 @@ public class VkBridgeService {
         retentionCommandDays = Math.max(1, plugin.getConfig().getInt("vk.retention.command-log-days", 7));
         retentionPendingDays = Math.max(1, plugin.getConfig().getInt("vk.retention.pending-days", 7));
         retentionClosedTicketsDays = Math.max(1, plugin.getConfig().getInt("vk.retention.closed-ticket-days", 14));
+    }
+
+
+    private void loadStaffDisciplinePolicy() {
+        autoSuspendEnabled = plugin.getConfig().getBoolean("staff-discipline.auto-suspend.enabled", true);
+        autoSuspendThreshold = Math.max(1, plugin.getConfig().getInt("staff-discipline.auto-suspend.threshold", 3));
+        autoSuspendRemoveVkChats = plugin.getConfig().getBoolean("staff-discipline.auto-suspend.remove-from-vk-chats", true);
+        autoSuspendRevokeServerRights = plugin.getConfig().getBoolean("staff-discipline.auto-suspend.revoke-server-rights", true);
+        autoSuspendRestoreServerRights = plugin.getConfig().getBoolean("staff-discipline.auto-suspend.restore-server-rights", false);
+        autoSuspendRevokeCommands = new ArrayList<>(plugin.getConfig().getStringList("staff-discipline.auto-suspend.server-revoke-commands"));
+        autoSuspendRestoreCommands = new ArrayList<>(plugin.getConfig().getStringList("staff-discipline.auto-suspend.server-restore-commands"));
+
+        autoSuspendNotifyChatTypes = new ArrayList<>();
+        List<String> rawTypes = plugin.getConfig().getStringList("staff-discipline.auto-suspend.notify-chat-types");
+        if (rawTypes.isEmpty()) rawTypes = Arrays.asList("ADMMANAGE", "EVENTS");
+        for (String x : rawTypes) {
+            try { autoSuspendNotifyChatTypes.add(ChatType.valueOf(x.toUpperCase(Locale.ROOT))); } catch (Exception ignored) {}
+        }
+        if (autoSuspendNotifyChatTypes.isEmpty()) autoSuspendNotifyChatTypes = Arrays.asList(ChatType.ADMMANAGE, ChatType.EVENTS);
     }
 
     private void loadAdmins() {
@@ -383,7 +413,7 @@ public class VkBridgeService {
         if (lower.startsWith("!staffstats ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleStaffStats(peerId, text)); return; }
 
         if (lower.equals("!audit") || lower.startsWith("!audit ")) { requireAndRun(peerId, actorLevel, "audit", () -> handleAudit(peerId, text)); return; }
-        if (lower.startsWith("!staffnote ") || lower.startsWith("!staffwarn ") || lower.startsWith("!staffreprimand ") || lower.startsWith("!staffdiscipline ") || lower.startsWith("!staffforgive ")) {
+        if (lower.startsWith("!staffnote ") || lower.startsWith("!staffwarn ") || lower.startsWith("!staffreprimand ") || lower.startsWith("!staffdiscipline ") || lower.startsWith("!staffforgive ") || lower.startsWith("!staffsuspend ") || lower.startsWith("!staffrestore ")) {
             requireAndRun(peerId, actorLevel, "discipline", () -> handleDiscipline(peerId, actorNick, text));
             return;
         }
@@ -746,10 +776,13 @@ public class VkBridgeService {
             }
         }
         for (DisciplineRecord dr : discipline) if (key.equalsIgnoreCase(dr.target) && !dr.forgiven) s.activeDiscipline++;
+        int activeReprimands = countActiveReprimands(key);
+        StaffStateRecord state = getStaffState(key);
 
         int avgFirst = s.firstResponseSamples == 0 ? 0 : s.firstResponseMinutes / s.firstResponseSamples;
         String quality = s.reverted == 0 ? "стабильно" : (s.reverted <= 2 ? "нормально" : "нужен контроль");
-        String recommendation = (s.closedSupport + s.closedReport >= 10 && avgFirst > 0 && avgFirst <= 5 && s.reverted <= 1) ? "к повышению" : "наблюдение";
+        if (state.status == StaffStatus.SUSPENDED) quality = "критично";
+        String recommendation = (s.closedSupport + s.closedReport >= 10 && avgFirst > 0 && avgFirst <= 5 && s.reverted <= 1 && state.status != StaffStatus.SUSPENDED) ? "к повышению" : "наблюдение";
 
         List<String> rows = new ArrayList<>();
         rows.add("📊 StaffStats " + key);
@@ -758,6 +791,9 @@ public class VkBridgeService {
         rows.add("First response avg: " + (avgFirst == 0 ? "н/д" : avgFirst + " мин"));
         rows.add("Punishments/reverted: " + s.punishments + "/" + s.reverted);
         rows.add("Active discipline: " + s.activeDiscipline);
+        rows.add("Status: " + state.status);
+        rows.add("Active reprimands: " + activeReprimands + "/" + autoSuspendThreshold);
+        if (state.status == StaffStatus.SUSPENDED) rows.add("Suspend reason: " + state.suspendedReason);
         rows.add("Quality: " + quality);
         rows.add("Recommendation: " + recommendation);
         if (full) rows.add("Online d/7d/30d: n/a");
@@ -785,15 +821,25 @@ public class VkBridgeService {
     }
 
     private void handleDiscipline(int peerId, String actor, String text) {
-        String[] p = text.split("\\s+", 3);
+        String[] p = text.split("\s+", 3);
         String cmd = p[0].toLowerCase(Locale.ROOT);
 
         if (cmd.equals("!staffdiscipline")) {
             if (p.length < 2) { sendMessage(peerId, "Использование: !staffdiscipline <vk_id|nick>"); return; }
+            String key = canonicalStaffKey(p[1]);
             List<String> rows = new ArrayList<>();
-            rows.add("📘 Discipline " + p[1]);
-            for (DisciplineRecord r : discipline) if (r.target.equalsIgnoreCase(p[1])) rows.add("#" + r.id + " " + r.type + " | " + (r.forgiven ? "forgiven" : "active") + " | " + r.text);
-            if (rows.size() == 1) rows.add("нет записей");
+            StaffStateRecord state = getStaffState(key);
+            int activeReprimands = countActiveReprimands(key);
+            rows.add("📘 Discipline " + key);
+            rows.add("Status: " + state.status);
+            rows.add("Активные выговоры: " + activeReprimands + "/" + autoSuspendThreshold + (state.status == StaffStatus.SUSPENDED ? " (AUTO-SUSPEND)" : ""));
+            if (state.status == StaffStatus.SUSPENDED) {
+                rows.add("Suspended by: " + state.suspendedBy);
+                rows.add("Suspended at: " + formatAgo(state.suspendedAt));
+                rows.add("Reason: " + state.suspendedReason);
+            }
+            for (DisciplineRecord r : discipline) if (key.equalsIgnoreCase(r.target)) rows.add("#" + r.id + " " + r.type + " | " + (r.forgiven ? "forgiven" : "active") + " | " + r.text);
+            if (rows.size() <= 4) rows.add("нет записей");
             sendMessage(peerId, String.join("\n", rows));
             return;
         }
@@ -805,18 +851,177 @@ public class VkBridgeService {
             if (record == null) { sendMessage(peerId, "Запись не найдена"); return; }
             record.forgiven = true;
             dbDiscipline(record);
-            audit("discipline", actor, "forgive #" + record.id);
+            audit("STAFF_REPRIMAND_FORGIVEN", actor, "forgive #" + record.id + " target=" + record.target + " activeReprimands=" + countActiveReprimands(record.target));
             sendMessage(peerId, "✅ Дисциплинарная запись #" + record.id + " погашена");
+            return;
+        }
+
+        if (cmd.equals("!staffsuspend")) {
+            if (p.length < 2) { sendMessage(peerId, "Использование: !staffsuspend <vk_id|nick> [reason]"); return; }
+            String key = canonicalStaffKey(p[1]);
+            String reason = p.length >= 3 ? p[2] : "Manual suspend";
+            SuspendResult result = suspendStaff(key, actor, "MANUAL", reason, -1, false);
+            sendMessage(peerId, result.message);
+            return;
+        }
+
+        if (cmd.equals("!staffrestore")) {
+            if (p.length < 2) { sendMessage(peerId, "Использование: !staffrestore <vk_id|nick> [reason]"); return; }
+            String key = canonicalStaffKey(p[1]);
+            String reason = p.length >= 3 ? p[2] : "Manual restore";
+            StaffStateRecord state = getStaffState(key);
+            if (state.status != StaffStatus.SUSPENDED) { sendMessage(peerId, "ℹ Staff уже ACTIVE"); return; }
+            state.status = StaffStatus.ACTIVE;
+            state.suspendedAt = Instant.EPOCH;
+            state.suspendedBy = "";
+            state.suspendedReason = "";
+            state.suspendedSource = "";
+            state.updatedAt = Instant.now();
+            dbStaffState(key, state);
+            if (autoSuspendRestoreServerRights && !autoSuspendRestoreCommands.isEmpty()) executeServerCommands(key, state.nick, state.uuid, autoSuspendRestoreCommands, "STAFF_SERVER_RIGHTS_RESTORED", actor);
+            audit("STAFF_RESTORED", actor, "target=" + key + " reason=" + reason);
+            notifySuspendChats("✅ Staff восстановлен: " + key + " | reason: " + reason);
+            sendMessage(peerId, "✅ Staff восстановлен: " + key + " | права на сервере: " + (autoSuspendRestoreServerRights ? "restore-commands запущены" : "не восстанавливались автоматически"));
             return;
         }
 
         if (p.length < 3) { sendMessage(peerId, "Использование: !staffnote|!staffwarn|!staffreprimand <vk_id|nick> <text>"); return; }
         DisciplineType type = cmd.equals("!staffwarn") ? DisciplineType.WARNING : cmd.equals("!staffreprimand") ? DisciplineType.REPRIMAND : DisciplineType.NOTE;
-        DisciplineRecord rec = new DisciplineRecord(nextDisciplineId(), p[1], type, p[2], actor);
+        String key = canonicalStaffKey(p[1]);
+        DisciplineRecord rec = new DisciplineRecord(nextDisciplineId(), key, type, p[2], actor);
         discipline.add(rec);
         dbDiscipline(rec);
-        audit("discipline", actor, type.name().toLowerCase(Locale.ROOT) + " -> " + p[1] + " | " + p[2]);
-        sendMessage(peerId, "✅ " + type.name().toLowerCase(Locale.ROOT) + " записан для " + p[1] + " (#" + rec.id + ")");
+        if (type == DisciplineType.REPRIMAND) {
+            int active = countActiveReprimands(key);
+            audit("STAFF_REPRIMAND_ISSUED", actor, "target=" + key + " record=#" + rec.id + " active=" + active + " reason=" + p[2]);
+            maybeAutoSuspend(key, rec.id);
+        } else {
+            audit("discipline", actor, type.name().toLowerCase(Locale.ROOT) + " -> " + key + " | " + p[2]);
+        }
+        sendMessage(peerId, "✅ " + type.name().toLowerCase(Locale.ROOT) + " записан для " + key + " (#" + rec.id + ")");
+    }
+
+    private void maybeAutoSuspend(String key, int disciplineRecordId) {
+        if (!autoSuspendEnabled) return;
+        int active = countActiveReprimands(key);
+        if (active < autoSuspendThreshold) return;
+        StaffStateRecord state = getStaffState(key);
+        if (state.status == StaffStatus.SUSPENDED) {
+            audit("STAFF_AUTO_SUSPENDED", "SYSTEM", "target=" + key + " skipped=already_suspended active=" + active + " record=#" + disciplineRecordId);
+            return;
+        }
+        suspendStaff(key, "SYSTEM", "AUTO_REPRIMAND_THRESHOLD", "Reached " + active + " active reprimands", disciplineRecordId, true);
+    }
+
+    private int countActiveReprimands(String key) {
+        int c = 0;
+        for (DisciplineRecord d : discipline) if (key.equalsIgnoreCase(d.target) && d.type == DisciplineType.REPRIMAND && !d.forgiven) c++;
+        return c;
+    }
+
+    private SuspendResult suspendStaff(String key, String actor, String source, String reason, int linkedDisciplineId, boolean auto) {
+        StaffStateRecord state = getStaffState(key);
+        if (state.status == StaffStatus.SUSPENDED) {
+            return new SuspendResult(false, "ℹ Staff уже SUSPENDED");
+        }
+
+        int removedChats = 0;
+        boolean vkPartial = false;
+        if (autoSuspendRemoveVkChats) {
+            Long vkId = resolveVkIdForStaff(key, state);
+            if (vkId != null) {
+                for (Integer chatId : chatIds.values()) {
+                    boolean ok = kickFromChat(vkId, chatId);
+                    if (ok) removedChats++; else vkPartial = true;
+                }
+                audit("STAFF_VK_REMOVED_FROM_CHATS", actor, "target=" + key + " vk_id=" + vkId + " removed=" + removedChats + " partial=" + vkPartial);
+            }
+        }
+
+        boolean revokePartial = false;
+        if (autoSuspendRevokeServerRights && !autoSuspendRevokeCommands.isEmpty()) {
+            revokePartial = !executeServerCommands(key, state.nick, state.uuid, autoSuspendRevokeCommands, "STAFF_SERVER_RIGHTS_REVOKED", actor);
+        }
+
+        state.status = StaffStatus.SUSPENDED;
+        state.suspendedAt = Instant.now();
+        state.suspendedBy = actor;
+        state.suspendedReason = reason;
+        state.suspendedSource = source;
+        state.updatedAt = Instant.now();
+        dbStaffState(key, state);
+
+        int active = countActiveReprimands(key);
+        audit(auto ? "STAFF_AUTO_SUSPENDED" : "STAFF_MANUALLY_SUSPENDED", actor,
+                "target=" + key + " reason=" + reason + " source=" + source + " record=" + linkedDisciplineId + " active=" + active + " removedChats=" + removedChats + " revokePartial=" + revokePartial);
+
+        notifySuspendChats("⛔ Staff отстранён: " + key + " | причина: " + reason + " | выговоры: " + active + "/" + autoSuspendThreshold + " | чатов удалено: " + removedChats);
+        String msg = "✅ SUSPEND: " + key + " | удалено из VK чатов: " + removedChats + " | server revoke: " + (autoSuspendRevokeServerRights ? "запущен" : "выкл") + (vkPartial || revokePartial ? " | partial" : "");
+        return new SuspendResult(true, msg);
+    }
+
+    private boolean executeServerCommands(String key, String nick, String uuid, List<String> commands, String auditType, String actor) {
+        boolean allOk = true;
+        for (String tpl : commands) {
+            String cmd = tpl.replace("{nick}", nick == null ? key : nick)
+                    .replace("{vk_id}", key)
+                    .replace("{uuid}", uuid == null ? "" : uuid)
+                    .replace("{role}", "staff");
+            try {
+                Bukkit.getScheduler().runTask(plugin, () -> Bukkit.dispatchCommand(Bukkit.getConsoleSender(), cmd));
+                audit(auditType, actor, "target=" + key + " cmd=" + cmd + " result=queued");
+            } catch (Exception e) {
+                allOk = false;
+                audit(auditType, actor, "target=" + key + " cmd=" + cmd + " result=error:" + e.getMessage());
+            }
+        }
+        return allOk;
+    }
+
+    private void notifySuspendChats(String message) {
+        for (ChatType t : autoSuspendNotifyChatTypes) sendToChat(t, message);
+    }
+
+    private String canonicalStaffKey(String raw) {
+        String value = raw.trim();
+        try {
+            long id = Long.parseLong(value);
+            if (admins.containsKey(id)) return String.valueOf(id);
+        } catch (Exception ignored) {}
+        for (Map.Entry<Long, AdminData> e : admins.entrySet()) if (e.getValue().nickname.equalsIgnoreCase(value)) return String.valueOf(e.getKey());
+        return value.toLowerCase(Locale.ROOT);
+    }
+
+    private StaffStateRecord getStaffState(String key) {
+        String canon = canonicalStaffKey(key);
+        StaffStateRecord st = staffStateByKey.get(canon);
+        if (st != null) return st;
+        st = new StaffStateRecord();
+        st.key = canon;
+        st.nick = resolveNickByKey(canon);
+        st.uuid = resolveUuidByNick(st.nick);
+        staffStateByKey.put(canon, st);
+        return st;
+    }
+
+    private String resolveNickByKey(String key) {
+        try {
+            long id = Long.parseLong(key);
+            AdminData a = admins.get(id);
+            if (a != null) return a.nickname;
+        } catch (Exception ignored) {}
+        return key;
+    }
+
+    private String resolveUuidByNick(String nick) {
+        if (nick == null || nick.isEmpty()) return "";
+        try { return Bukkit.getOfflinePlayer(nick).getUniqueId().toString(); } catch (Exception e) { return ""; }
+    }
+
+    private Long resolveVkIdForStaff(String key, StaffStateRecord state) {
+        try { return Long.parseLong(key); } catch (Exception ignored) {}
+        for (Map.Entry<Long, AdminData> e : admins.entrySet()) if (e.getValue().nickname.equalsIgnoreCase(state.nick)) return e.getKey();
+        return null;
     }
 
     private void handlePunishLog(int peerId, String text) {
@@ -1287,6 +1492,7 @@ public class VkBridgeService {
                 st.executeUpdate("create table if not exists discipline(id integer primary key, ts integer, target text, type text, text text, actor text, forgiven integer)");
                 st.executeUpdate("create table if not exists pending_delivery(id integer primary key autoincrement, uuid text, ticket_id integer, body text, created_ms integer, delivered integer default 0)");
                 st.executeUpdate("create table if not exists staff_metrics(k text primary key, v text)");
+                st.executeUpdate("create table if not exists staff_state(staff_key text primary key, nick text, uuid text, status text, suspended_at integer, suspended_by text, suspended_reason text, suspended_source text, updated_at integer)");
             }
         } catch (Exception e) {
             plugin.getLogger().warning("SQLite init failed: " + e.getMessage());
@@ -1338,6 +1544,21 @@ public class VkBridgeService {
                     dr.forgiven = rs.getInt("forgiven") == 1;
                     dr.time = Instant.ofEpochMilli(rs.getLong("ts"));
                     discipline.add(dr);
+                }
+            }
+            try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery("select * from staff_state")) {
+                while (rs.next()) {
+                    StaffStateRecord stRec = new StaffStateRecord();
+                    stRec.key = rs.getString("staff_key");
+                    stRec.nick = rs.getString("nick");
+                    stRec.uuid = rs.getString("uuid");
+                    stRec.status = StaffStatus.valueOf(rs.getString("status"));
+                    stRec.suspendedAt = Instant.ofEpochMilli(rs.getLong("suspended_at"));
+                    stRec.suspendedBy = rs.getString("suspended_by");
+                    stRec.suspendedReason = rs.getString("suspended_reason");
+                    stRec.suspendedSource = rs.getString("suspended_source");
+                    stRec.updatedAt = Instant.ofEpochMilli(rs.getLong("updated_at"));
+                    staffStateByKey.put(stRec.key, stRec);
                 }
             }
             try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery("select uuid,ticket_id,body,created_ms from pending_delivery where delivered=0 order by id")) {
@@ -1443,6 +1664,23 @@ public class VkBridgeService {
         }
     }
 
+    private void dbStaffState(String key, StaffStateRecord r) {
+        try (Connection c = db()) {
+            PreparedStatement ps = c.prepareStatement("insert or replace into staff_state(staff_key,nick,uuid,status,suspended_at,suspended_by,suspended_reason,suspended_source,updated_at) values(?,?,?,?,?,?,?,?,?)");
+            ps.setString(1, key);
+            ps.setString(2, r.nick == null ? "" : r.nick);
+            ps.setString(3, r.uuid == null ? "" : r.uuid);
+            ps.setString(4, r.status.name());
+            ps.setLong(5, r.suspendedAt == null ? 0L : r.suspendedAt.toEpochMilli());
+            ps.setString(6, r.suspendedBy == null ? "" : r.suspendedBy);
+            ps.setString(7, r.suspendedReason == null ? "" : r.suspendedReason);
+            ps.setString(8, r.suspendedSource == null ? "" : r.suspendedSource);
+            ps.setLong(9, r.updatedAt == null ? System.currentTimeMillis() : r.updatedAt.toEpochMilli());
+            ps.executeUpdate();
+        } catch (Exception ignored) {
+        }
+    }
+
     private void dbPending(UUID uuid, PendingMessage m) {
         try (Connection c = db()) {
             PreparedStatement ps = c.prepareStatement("insert into pending_delivery(uuid,ticket_id,body,created_ms,delivered) values(?,?,?,?,0)");
@@ -1474,6 +1712,26 @@ public class VkBridgeService {
     private enum TicketCategory { SUPPORT, REPORT }
     private enum TicketStatus { OPEN, IN_PROGRESS, WAITING_PLAYER, CLOSED }
     private enum DisciplineType { NOTE, WARNING, REPRIMAND }
+    private enum StaffStatus { ACTIVE, SUSPENDED }
+
+
+    private static class StaffStateRecord {
+        private String key;
+        private String nick;
+        private String uuid;
+        private StaffStatus status = StaffStatus.ACTIVE;
+        private Instant suspendedAt = Instant.EPOCH;
+        private String suspendedBy = "";
+        private String suspendedReason = "";
+        private String suspendedSource = "";
+        private Instant updatedAt = Instant.now();
+    }
+
+    private static class SuspendResult {
+        private final boolean changed;
+        private final String message;
+        private SuspendResult(boolean changed, String message) { this.changed = changed; this.message = message; }
+    }
 
     private static class AdminData {
         private int level;
