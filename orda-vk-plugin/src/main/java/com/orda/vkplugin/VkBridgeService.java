@@ -346,7 +346,12 @@ public class VkBridgeService {
     }
 
     private void onUpdate(JsonObject update) {
-        if (!"message_new".equals(update.has("type") ? update.get("type").getAsString() : "")) return;
+        String type = update.has("type") ? update.get("type").getAsString() : "";
+        if ("message_event".equals(type)) {
+            onMessageEvent(update);
+            return;
+        }
+        if (!"message_new".equals(type)) return;
         JsonObject message = update.getAsJsonObject("object").getAsJsonObject("message");
         if (message == null) return;
         int peerId = message.get("peer_id").getAsInt();
@@ -363,6 +368,58 @@ public class VkBridgeService {
             return;
         }
         handleCommand(peerId, actor.level, actor.nickname, text);
+    }
+
+    private void onMessageEvent(JsonObject update) {
+        JsonObject obj = update.getAsJsonObject("object");
+        if (obj == null) return;
+        int peerId = obj.has("peer_id") ? obj.get("peer_id").getAsInt() : 0;
+        long userId = obj.has("user_id") ? obj.get("user_id").getAsLong() : 0L;
+        String eventId = obj.has("event_id") ? obj.get("event_id").getAsString() : "";
+        if (peerId <= 0 || userId <= 0 || !isKnownPeer(peerId)) return;
+
+        AdminData actor = admins.get(userId);
+        if (actor == null) {
+            answerCallback(peerId, userId, eventId, "⛔ Нет доступа.");
+            return;
+        }
+
+        JsonObject payload = obj.getAsJsonObject("payload");
+        if (payload == null || !payload.has("a")) {
+            answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
+            return;
+        }
+
+        String action = payload.get("a").getAsString();
+        try {
+            if (action.equals("tickets_filter")) {
+                requireAndRun(peerId, actor.level, "tickets", () -> {
+                    String filter = payload.has("f") ? payload.get("f").getAsString() : "open";
+                    handleTickets(peerId, actor.nickname, actor.level, "!tickets " + filter);
+                    answerCallback(peerId, userId, eventId, "✅ Фильтр обновлён");
+                });
+                return;
+            }
+
+            if (action.equals("ticket_view") || action.equals("ticket_full") || action.equals("ticket_take") || action.equals("ticket_unassign")
+                    || action.equals("ticket_move_prepare") || action.equals("ticket_move_confirm") || action.equals("ticket_close_prepare") || action.equals("ticket_close_confirm")
+                    || action.equals("ticket_reply_hint")) {
+                requireAndRun(peerId, actor.level, "tickets", () -> handleTicketCallback(peerId, actor.nickname, actor.level, userId, eventId, action, payload));
+                return;
+            }
+
+            if (action.equals("staffstatus_show") || action.equals("staffdiscipline_open") || action.equals("staffrevokecheck_open")
+                    || action.equals("staff_suspend_prepare") || action.equals("staff_suspend_confirm")
+                    || action.equals("staff_restore_prepare") || action.equals("staff_restore_confirm")
+                    || action.equals("staffwarn_hint") || action.equals("staffreprimand_hint")) {
+                requireAndRun(peerId, actor.level, "audit", () -> handleStaffCallback(peerId, actor.nickname, actor.level, userId, eventId, action, payload));
+                return;
+            }
+
+            answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
+        } catch (Exception e) {
+            answerCallback(peerId, userId, eventId, "⚠ Ошибка действия");
+        }
     }
 
     private boolean isKnownPeer(int peerId) {
@@ -394,8 +451,8 @@ public class VkBridgeService {
 
         if (lower.equals("!admins") || lower.equals("!админы")) { requireAndRun(peerId, actorLevel, "admins", () -> sendMessage(peerId, formatAdmins())); return; }
 
-        if (lower.startsWith("!tickets")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleTickets(peerId, actorNick, text)); return; }
-        if (lower.startsWith("!ticket ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleTicket(peerId, text)); return; }
+        if (lower.startsWith("!tickets")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleTickets(peerId, actorNick, actorLevel, text)); return; }
+        if (lower.startsWith("!ticket ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleTicket(peerId, actorLevel, text)); return; }
         if (lower.startsWith("!take ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleTake(peerId, actorNick, text)); return; }
         if (lower.startsWith("!unassign ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleUnassign(peerId, actorNick, text)); return; }
         if (lower.startsWith("!replyclose ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleReplyClose(peerId, actorNick, text)); return; }
@@ -411,7 +468,7 @@ public class VkBridgeService {
         if (lower.startsWith("!check ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleCheck(peerId, text)); return; }
         if (lower.startsWith("!lookup ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleLookup(peerId, text)); return; }
         if (lower.startsWith("!staffstats ")) { requireAndRun(peerId, actorLevel, "tickets", () -> handleStaffStats(peerId, text)); return; }
-        if (lower.startsWith("!staffstatus ")) { requireAndRun(peerId, actorLevel, "audit", () -> handleStaffStatus(peerId, text)); return; }
+        if (lower.startsWith("!staffstatus ")) { requireAndRun(peerId, actorLevel, "audit", () -> handleStaffStatus(peerId, actorLevel, text)); return; }
         if (lower.startsWith("!staffrevokecheck ")) { requireAndRun(peerId, actorLevel, "audit", () -> handleStaffRevokeCheck(peerId, text)); return; }
 
         if (lower.equals("!audit") || lower.startsWith("!audit ")) { requireAndRun(peerId, actorLevel, "audit", () -> handleAudit(peerId, text)); return; }
@@ -486,7 +543,7 @@ public class VkBridgeService {
         return t;
     }
 
-    private void handleTickets(int peerId, String actorNick, String text) {
+    private void handleTickets(int peerId, String actorNick, int actorLevel, String text) {
         String[] p = text.split("\\s+");
         String filter = p.length >= 2 ? p[1].toLowerCase(Locale.ROOT) : "open";
 
@@ -500,11 +557,14 @@ public class VkBridgeService {
 
         list.sort(Comparator.comparingInt(t -> ticketPriority(t.status)));
 
-        if (list.isEmpty()) { sendMessage(peerId, "🎫 Тикетов по фильтру нет."); return; }
+        if (list.isEmpty()) {
+            sendMessage(peerId, "🎫 Тикетов по фильтру нет.", buildTicketsFilterKeyboard(actorLevel));
+            return;
+        }
         List<String> rows = new ArrayList<>();
         rows.add("🎫 Tickets [" + filter + "]");
         for (Ticket t : list) rows.add("#" + t.id + " | " + t.category.name().toLowerCase(Locale.ROOT) + " | " + t.status + " | @" + t.author + " | " + t.assignedVkId);
-        sendMessage(peerId, String.join("\n", rows));
+        sendMessage(peerId, String.join("\n", rows), buildTicketsFilterKeyboard(actorLevel));
     }
 
     private int ticketPriority(TicketStatus s) {
@@ -514,13 +574,170 @@ public class VkBridgeService {
         return 4;
     }
 
-    private void handleTicket(int peerId, String text) {
+    private void handleTicket(int peerId, int actorLevel, String text) {
         String[] p = text.split("\\s+");
         boolean full = p.length == 3 && (p[1].equalsIgnoreCase("full") || p[2].equalsIgnoreCase("full"));
         String idRaw = p.length >= 2 ? (p[1].equalsIgnoreCase("full") ? p[2] : p[1]) : "";
         Ticket t = findTicket(idRaw);
         if (t == null) { sendMessage(peerId, "Тикет не найден"); return; }
-        sendMessage(peerId, t.formatCard(full));
+        sendMessage(peerId, t.formatCard(full), buildTicketKeyboard(t, full, actorLevel));
+    }
+
+    private void handleTicketCallback(int peerId, String actorNick, int actorLevel, long userId, String eventId, String action, JsonObject payload) {
+        int id = payload.has("id") ? payload.get("id").getAsInt() : 0;
+        Ticket t = tickets.get(id);
+        if (t == null) {
+            answerCallback(peerId, userId, eventId, "⚠ Тикет уже неактуален");
+            return;
+        }
+
+        if (action.equals("ticket_view") || action.equals("ticket_full")) {
+            boolean full = action.equals("ticket_full");
+            sendMessage(peerId, t.formatCard(full), buildTicketKeyboard(t, full, actorLevel));
+            answerCallback(peerId, userId, eventId, "✅ Карточка обновлена");
+            return;
+        }
+
+        if (action.equals("ticket_reply_hint")) {
+            sendMessage(peerId, "↪ Ответьте так: !reply " + t.id + " <текст>");
+            answerCallback(peerId, userId, eventId, "✅ Подсказка отправлена");
+            return;
+        }
+
+        if (action.equals("ticket_take")) {
+            if (actorNick.equalsIgnoreCase(t.assignedVkId)) {
+                answerCallback(peerId, userId, eventId, "ℹ Уже назначен на вас");
+                return;
+            }
+            handleTake(peerId, actorNick, "!take " + t.id);
+            answerCallback(peerId, userId, eventId, "✅ Тикет взят");
+            sendMessage(peerId, t.formatCard(false), buildTicketKeyboard(t, false, actorLevel));
+            return;
+        }
+
+        if (action.equals("ticket_unassign")) {
+            if ("-".equals(t.assignedVkId)) {
+                answerCallback(peerId, userId, eventId, "ℹ Уже без ответственного");
+                return;
+            }
+            handleUnassign(peerId, actorNick, "!unassign " + t.id);
+            answerCallback(peerId, userId, eventId, "✅ Назначение снято");
+            sendMessage(peerId, t.formatCard(false), buildTicketKeyboard(t, false, actorLevel));
+            return;
+        }
+
+        if (action.equals("ticket_close_prepare")) {
+            sendMessage(peerId, "Закрыть тикет #" + t.id + "?", buildTicketCloseConfirmKeyboard(t.id));
+            answerCallback(peerId, userId, eventId, "⚠ Требуется подтверждение");
+            return;
+        }
+
+        if (action.equals("ticket_close_confirm")) {
+            if (t.status == TicketStatus.CLOSED) {
+                answerCallback(peerId, userId, eventId, "ℹ Тикет уже закрыт");
+                return;
+            }
+            handleClose(peerId, actorNick, "!close " + t.id + " via_button");
+            answerCallback(peerId, userId, eventId, "✅ Тикет закрыт");
+            sendMessage(peerId, t.formatCard(false), buildTicketKeyboard(t, false, actorLevel));
+            return;
+        }
+
+        if (action.equals("ticket_move_prepare")) {
+            String to = payload.has("to") ? payload.get("to").getAsString() : "support";
+            sendMessage(peerId, "Переместить тикет #" + t.id + " в " + to + "?", buildTicketMoveConfirmKeyboard(t.id, to));
+            answerCallback(peerId, userId, eventId, "⚠ Требуется подтверждение");
+            return;
+        }
+
+        if (action.equals("ticket_move_confirm")) {
+            String to = payload.has("to") ? payload.get("to").getAsString() : "support";
+            TicketCategory target = parseCategory(to);
+            if (target == null) {
+                answerCallback(peerId, userId, eventId, "⚠ Категория неактуальна");
+                return;
+            }
+            if (t.category == target) {
+                answerCallback(peerId, userId, eventId, "ℹ Уже в этой категории");
+                return;
+            }
+            handleMove(peerId, actorNick, "!move " + t.id + " " + to);
+            answerCallback(peerId, userId, eventId, "✅ Тикет перемещён");
+            sendMessage(peerId, t.formatCard(false), buildTicketKeyboard(t, false, actorLevel));
+            return;
+        }
+
+        answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
+    }
+
+    private void handleStaffCallback(int peerId, String actorNick, int actorLevel, long userId, String eventId, String action, JsonObject payload) {
+        String key = payload.has("k") ? payload.get("k").getAsString() : "";
+        if (key.isEmpty()) {
+            answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
+            return;
+        }
+
+        if (action.equals("staffstatus_show")) {
+            handleStaffStatus(peerId, actorLevel, "!staffstatus " + key);
+            answerCallback(peerId, userId, eventId, "✅ Статус обновлён");
+            return;
+        }
+        if (action.equals("staffdiscipline_open")) {
+            handleDiscipline(peerId, actorNick, "!staffdiscipline " + key);
+            answerCallback(peerId, userId, eventId, "✅ Карточка discipline");
+            return;
+        }
+        if (action.equals("staffrevokecheck_open")) {
+            handleStaffRevokeCheck(peerId, "!staffrevokecheck " + key);
+            answerCallback(peerId, userId, eventId, "✅ Revoke-check обновлён");
+            return;
+        }
+        if (action.equals("staffwarn_hint")) {
+            sendMessage(peerId, "Используйте: !staffwarn " + key + " <причина>");
+            answerCallback(peerId, userId, eventId, "✅ Подсказка отправлена");
+            return;
+        }
+        if (action.equals("staffreprimand_hint")) {
+            sendMessage(peerId, "Используйте: !staffreprimand " + key + " <причина>");
+            answerCallback(peerId, userId, eventId, "✅ Подсказка отправлена");
+            return;
+        }
+
+        if (action.equals("staff_suspend_prepare")) {
+            sendMessage(peerId, "Подтвердить suspend для " + key + "?", buildStaffSuspendConfirmKeyboard(key));
+            answerCallback(peerId, userId, eventId, "⚠ Требуется подтверждение");
+            return;
+        }
+        if (action.equals("staff_suspend_confirm")) {
+            StaffStateRecord st = getStaffState(key);
+            if (st.status == StaffStatus.SUSPENDED) {
+                answerCallback(peerId, userId, eventId, "ℹ Staff уже отстранён");
+                return;
+            }
+            handleDiscipline(peerId, actorNick, "!staffsuspend " + key + " via_button");
+            answerCallback(peerId, userId, eventId, "✅ Staff отстранён");
+            handleStaffStatus(peerId, actorLevel, "!staffstatus " + key);
+            return;
+        }
+
+        if (action.equals("staff_restore_prepare")) {
+            sendMessage(peerId, "Подтвердить restore для " + key + "?", buildStaffRestoreConfirmKeyboard(key));
+            answerCallback(peerId, userId, eventId, "⚠ Требуется подтверждение");
+            return;
+        }
+        if (action.equals("staff_restore_confirm")) {
+            StaffStateRecord st = getStaffState(key);
+            if (st.status != StaffStatus.SUSPENDED) {
+                answerCallback(peerId, userId, eventId, "ℹ Staff уже ACTIVE");
+                return;
+            }
+            handleDiscipline(peerId, actorNick, "!staffrestore " + key + " via_button");
+            answerCallback(peerId, userId, eventId, "✅ Staff восстановлен");
+            handleStaffStatus(peerId, actorLevel, "!staffstatus " + key);
+            return;
+        }
+
+        answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
     }
 
     private synchronized void handleTake(int peerId, String actor, String text) {
@@ -802,7 +1019,7 @@ public class VkBridgeService {
         sendMessage(peerId, String.join("\n", rows));
     }
 
-    private void handleStaffStatus(int peerId, String text) {
+    private void handleStaffStatus(int peerId, int actorLevel, String text) {
         String[] p = text.split("\\s+");
         if (p.length != 2) { sendMessage(peerId, "Использование: !staffstatus <vk_id|nick>"); return; }
         String key = canonicalStaffKey(p[1]);
@@ -828,7 +1045,7 @@ public class VkBridgeService {
             rows.add("Кем: " + state.suspendedBy);
         }
 
-        sendMessage(peerId, String.join("\n", rows.subList(0, Math.min(rows.size(), 8))));
+        sendMessage(peerId, String.join("\n", rows.subList(0, Math.min(rows.size(), 8))), buildStaffStatusKeyboard(key, actorLevel));
     }
 
     private void handleStaffRevokeCheck(int peerId, String text) {
@@ -1451,15 +1668,146 @@ public class VkBridgeService {
     }
 
     private void sendMessage(int peerId, String message) {
+        sendMessage(peerId, message, null);
+    }
+
+    private void sendMessage(int peerId, String message, String keyboardJson) {
         if (accessToken == null || accessToken.isEmpty()) return;
         try {
             Map<String, String> params = new HashMap<>();
             params.put("peer_id", String.valueOf(peerId));
             params.put("random_id", String.valueOf(UUID.randomUUID().hashCode()));
             params.put("message", message);
+            if (keyboardJson != null && !keyboardJson.isEmpty()) params.put("keyboard", keyboardJson);
             callVkMethod("messages.send", params);
         } catch (Exception ignored) {
         }
+    }
+
+    private void answerCallback(int peerId, long userId, String eventId, String text) {
+        if (eventId == null || eventId.isEmpty()) return;
+        try {
+            callVkMethod("messages.sendMessageEventAnswer", mapOf(
+                    "event_id", eventId,
+                    "user_id", String.valueOf(userId),
+                    "peer_id", String.valueOf(peerId),
+                    "event_data", gson.toJson(mapOf("type", "show_snackbar", "text", text))
+            ));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private String buildTicketsFilterKeyboard(int actorLevel) {
+        List<List<Map<String, Object>>> buttons = new ArrayList<>();
+        buttons.add(Arrays.asList(
+                callbackButton("Мои", "primary", mapOfObj("a", "tickets_filter", "f", "mine", "v", 1)),
+                callbackButton("Открытые", "secondary", mapOfObj("a", "tickets_filter", "f", "open", "v", 1)),
+                callbackButton("Без ответственного", "secondary", mapOfObj("a", "tickets_filter", "f", "unassigned", "v", 1))
+        ));
+        buttons.add(Arrays.asList(
+                callbackButton("Support", "secondary", mapOfObj("a", "tickets_filter", "f", "support", "v", 1)),
+                callbackButton("Report", "secondary", mapOfObj("a", "tickets_filter", "f", "report", "v", 1)),
+                callbackButton("Обновить", "positive", mapOfObj("a", "tickets_filter", "f", "open", "v", 1))
+        ));
+        return keyboardJson(buttons, false);
+    }
+
+    private String buildTicketKeyboard(Ticket t, boolean full, int actorLevel) {
+        List<List<Map<String, Object>>> buttons = new ArrayList<>();
+        List<Map<String, Object>> row1 = new ArrayList<>();
+        if (t.status != TicketStatus.CLOSED) {
+            row1.add(callbackButton("Взять", "primary", mapOfObj("a", "ticket_take", "id", t.id, "v", 1)));
+            row1.add(callbackButton("Снять", "secondary", mapOfObj("a", "ticket_unassign", "id", t.id, "v", 1)));
+            row1.add(callbackButton("Ответить", "secondary", mapOfObj("a", "ticket_reply_hint", "id", t.id, "v", 1)));
+        }
+        if (!row1.isEmpty()) buttons.add(row1);
+
+        List<Map<String, Object>> row2 = new ArrayList<>();
+        if (t.status != TicketStatus.CLOSED) row2.add(callbackButton("Закрыть", "negative", mapOfObj("a", "ticket_close_prepare", "id", t.id, "v", 1)));
+        row2.add(callbackButton(t.category == TicketCategory.SUPPORT ? "Уже support" : "В support", "secondary", mapOfObj("a", "ticket_move_prepare", "id", t.id, "to", "support", "v", 1)));
+        row2.add(callbackButton(t.category == TicketCategory.REPORT ? "Уже report" : "В report", "secondary", mapOfObj("a", "ticket_move_prepare", "id", t.id, "to", "report", "v", 1)));
+        if (!row2.isEmpty()) buttons.add(row2);
+
+        buttons.add(Collections.singletonList(callbackButton(full ? "Кратко" : "Полно", "positive", mapOfObj("a", full ? "ticket_view" : "ticket_full", "id", t.id, "v", 1))));
+        return keyboardJson(buttons, false);
+    }
+
+    private String buildTicketCloseConfirmKeyboard(int id) {
+        List<List<Map<String, Object>>> buttons = new ArrayList<>();
+        buttons.add(Arrays.asList(
+                callbackButton("Подтвердить", "negative", mapOfObj("a", "ticket_close_confirm", "id", id, "v", 1)),
+                callbackButton("Отмена", "secondary", mapOfObj("a", "ticket_view", "id", id, "v", 1))
+        ));
+        return keyboardJson(buttons, true);
+    }
+
+    private String buildTicketMoveConfirmKeyboard(int id, String to) {
+        List<List<Map<String, Object>>> buttons = new ArrayList<>();
+        buttons.add(Arrays.asList(
+                callbackButton("Подтвердить", "primary", mapOfObj("a", "ticket_move_confirm", "id", id, "to", to, "v", 1)),
+                callbackButton("Отмена", "secondary", mapOfObj("a", "ticket_view", "id", id, "v", 1))
+        ));
+        return keyboardJson(buttons, true);
+    }
+
+    private String buildStaffStatusKeyboard(String key, int actorLevel) {
+        List<List<Map<String, Object>>> buttons = new ArrayList<>();
+        buttons.add(Arrays.asList(
+                callbackButton("Discipline", "secondary", mapOfObj("a", "staffdiscipline_open", "k", key, "v", 1)),
+                callbackButton("RevokeCheck", "secondary", mapOfObj("a", "staffrevokecheck_open", "k", key, "v", 1)),
+                callbackButton("Обновить", "positive", mapOfObj("a", "staffstatus_show", "k", key, "v", 1))
+        ));
+
+        if (botAccessPolicy.hasAccess(actorLevel, "discipline")) {
+            buttons.add(Arrays.asList(
+                    callbackButton("Warn", "secondary", mapOfObj("a", "staffwarn_hint", "k", key, "v", 1)),
+                    callbackButton("Reprimand", "secondary", mapOfObj("a", "staffreprimand_hint", "k", key, "v", 1))
+            ));
+            buttons.add(Arrays.asList(
+                    callbackButton("Suspend", "negative", mapOfObj("a", "staff_suspend_prepare", "k", key, "v", 1)),
+                    callbackButton("Restore", "primary", mapOfObj("a", "staff_restore_prepare", "k", key, "v", 1))
+            ));
+        }
+        return keyboardJson(buttons, false);
+    }
+
+    private String buildStaffSuspendConfirmKeyboard(String key) {
+        List<List<Map<String, Object>>> buttons = new ArrayList<>();
+        buttons.add(Arrays.asList(
+                callbackButton("Подтвердить", "negative", mapOfObj("a", "staff_suspend_confirm", "k", key, "v", 1)),
+                callbackButton("Отмена", "secondary", mapOfObj("a", "staffstatus_show", "k", key, "v", 1))
+        ));
+        return keyboardJson(buttons, true);
+    }
+
+    private String buildStaffRestoreConfirmKeyboard(String key) {
+        List<List<Map<String, Object>>> buttons = new ArrayList<>();
+        buttons.add(Arrays.asList(
+                callbackButton("Подтвердить", "primary", mapOfObj("a", "staff_restore_confirm", "k", key, "v", 1)),
+                callbackButton("Отмена", "secondary", mapOfObj("a", "staffstatus_show", "k", key, "v", 1))
+        ));
+        return keyboardJson(buttons, true);
+    }
+
+    private Map<String, Object> callbackButton(String label, String color, Map<String, Object> payload) {
+        Map<String, Object> button = new LinkedHashMap<>();
+        button.put("action", mapOfObj("type", "callback", "label", label, "payload", payload));
+        button.put("color", color);
+        return button;
+    }
+
+    private Map<String, Object> mapOfObj(Object... kv) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < kv.length; i += 2) out.put(String.valueOf(kv[i]), kv[i + 1]);
+        return out;
+    }
+
+    private String keyboardJson(List<List<Map<String, Object>>> buttons, boolean inline) {
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("one_time", false);
+        root.put("inline", inline);
+        root.put("buttons", buttons);
+        return gson.toJson(root);
     }
 
     private JsonObject callVkMethod(String method, Map<String, String> params) throws IOException, InterruptedException {
