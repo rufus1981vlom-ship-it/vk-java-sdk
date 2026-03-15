@@ -82,6 +82,7 @@ public class VkBridgeService {
     private final Map<String, String> warnPresets = new HashMap<>();
 
     private final Map<String, Long> antiSpam = new HashMap<>();
+    private final Object stateLock = new Object();
 
     private int retentionCommandDays = 7;
     private int retentionPendingDays = 7;
@@ -422,13 +423,25 @@ public class VkBridgeService {
 
     private String formatHelp(int level, String mode) {
         List<String> rows = new ArrayList<>();
-        rows.add("🧭 OrdaVK PRO menu");
-        if (mode.equals("!help") || mode.equals("!help support")) rows.add("Support: !tickets !ticket !reply !close !take");
-        if (mode.equals("!help") || mode.equals("!help mod")) rows.add("Mod: !move !assign !unassign !reopen !r !rlist !check !lookup");
-        if (mode.equals("!help") || mode.equals("!help punish")) rows.add("Punish: !mute !ban !warn !unmute !pardon !punishlog");
-        if (mode.equals("!help") || mode.equals("!help audit")) rows.add("Audit: !audit recent|ticket|player|punish, discipline commands");
-        if ((mode.equals("!help") || mode.equals("!help admin")) && level >= 3) rows.add("Admin: !admin set/level/remove !rnick !cmd !vkban/!vkick/!vkunban");
+        rows.add("🧭 OrdaVK menu");
+
+        boolean showSupport = mode.equals("!help") || mode.equals("!help support");
+        boolean showMod = (mode.equals("!help") && level >= 2) || mode.equals("!help mod");
+        boolean showPunish = (mode.equals("!help") && level >= 2) || mode.equals("!help punish");
+        boolean showAudit = (mode.equals("!help") && level >= 3) || mode.equals("!help audit");
+        boolean showAdmin = (mode.equals("!help") && level >= 3) || mode.equals("!help admin");
+
         if (mode.equals("!help admin") && level < 3) return "⛔ Раздел admin недоступен";
+        if (mode.equals("!help audit") && level < 3) return "⛔ Раздел audit недоступен";
+        if (mode.equals("!help punish") && level < 2) return "⛔ Раздел punish недоступен";
+        if (mode.equals("!help mod") && level < 2) return "⛔ Раздел mod недоступен";
+
+        if (showSupport) rows.add("Support: !tickets !ticket !reply !close !take !rlist");
+        if (showMod) rows.add("Mod: !move !assign !unassign !reopen !check !lookup");
+        if (showPunish) rows.add("Punish: !mute !ban !warn !unmute !pardon !punishlog");
+        if (showAudit) rows.add("Audit: !audit recent|ticket|player|punish + discipline");
+        if (showAdmin) rows.add("Admin: !admin set/level/remove !rnick !cmd !vkban/!vkick/!vkunban");
+
         return String.join("\n", rows);
     }
 
@@ -478,7 +491,7 @@ public class VkBridgeService {
         sendMessage(peerId, t.formatCard(full));
     }
 
-    private void handleTake(int peerId, String actor, String text) {
+    private synchronized void handleTake(int peerId, String actor, String text) {
         String[] p = text.split("\\s+");
         if (p.length != 2) { sendMessage(peerId, "Использование: !take <id>"); return; }
         Ticket t = findTicket(p[1]);
@@ -492,7 +505,7 @@ public class VkBridgeService {
         sendMessage(peerId, "✅ #" + t.id + " назначен на вас");
     }
 
-    private void handleUnassign(int peerId, String actor, String text) {
+    private synchronized void handleUnassign(int peerId, String actor, String text) {
         String[] p = text.split("\\s+");
         if (p.length != 2) { sendMessage(peerId, "Использование: !unassign <id>"); return; }
         Ticket t = findTicket(p[1]);
@@ -506,7 +519,7 @@ public class VkBridgeService {
         sendMessage(peerId, "✅ Назначение снято: #" + t.id);
     }
 
-    private void handleReply(int peerId, String actor, String text) {
+    private synchronized void handleReply(int peerId, String actor, String text) {
         String[] p = text.split("\\s+", 3);
         if (p.length < 3) { sendMessage(peerId, "Использование: !reply <id> <text>"); return; }
         Ticket t = findTicket(p[1]);
@@ -532,7 +545,7 @@ public class VkBridgeService {
         handleClose(peerId, actor, "!close " + p[1] + " auto");
     }
 
-    private void handleAssign(int peerId, String actor, String text) {
+    private synchronized void handleAssign(int peerId, String actor, String text) {
         String[] p = text.split("\\s+");
         if (p.length != 3) { sendMessage(peerId, "Использование: !assign <id> <vk_id>"); return; }
         Ticket t = findTicket(p[1]);
@@ -546,7 +559,7 @@ public class VkBridgeService {
         sendMessage(peerId, "✅ #" + t.id + " назначен на " + p[2] + " (было: " + old + ")");
     }
 
-    private void handleClose(int peerId, String actor, String text) {
+    private synchronized void handleClose(int peerId, String actor, String text) {
         String[] p = text.split("\\s+", 3);
         if (p.length < 2) { sendMessage(peerId, "Использование: !close <id> [comment]"); return; }
         Ticket t = findTicket(p[1]);
@@ -560,7 +573,7 @@ public class VkBridgeService {
         sendMessage(peerId, "✅ Тикет #" + t.id + " закрыт");
     }
 
-    private void handleReopen(int peerId, String actor, String text) {
+    private synchronized void handleReopen(int peerId, String actor, String text) {
         String[] p = text.split("\\s+");
         if (p.length != 2) { sendMessage(peerId, "Использование: !reopen <id>"); return; }
         Ticket t = findTicket(p[1]);
@@ -573,7 +586,7 @@ public class VkBridgeService {
         sendMessage(peerId, "✅ Тикет #" + t.id + " открыт снова");
     }
 
-    private void handleMove(int peerId, String actor, String text) {
+    private synchronized void handleMove(int peerId, String actor, String text) {
         String[] p = text.split("\\s+", 4);
         if (p.length < 3) { sendMessage(peerId, "Использование: !move <id> support|report [--reason ...]"); return; }
         Ticket t = findTicket(p[1]);
@@ -822,7 +835,7 @@ public class VkBridgeService {
         sendMessage(peerId, String.join("\n", rows));
     }
 
-    private void handleReversePunish(int peerId, String actor, String text, String type) {
+    private synchronized void handleReversePunish(int peerId, String actor, String text, String type) {
         String[] p = text.split("\\s+", 3);
         if (p.length < 2) { sendMessage(peerId, "Использование: !" + type + " <nick> [reason]"); return; }
         String reason = p.length >= 3 ? p[2] : "manual";
@@ -835,7 +848,7 @@ public class VkBridgeService {
             if (x.target.equalsIgnoreCase(p[1]) && !x.reverted) { target = x; break; }
         }
         if (target != null) target.reverted = true;
-        dbPunishment(target);
+        dbPunishmentReversal(type, actor, p[1], reason);
 
         audit("punish", actor, type + " " + p[1] + " " + reason);
         sendToChat(ChatType.MODMANAGE, "♻ " + actor + " -> /" + cmd);
@@ -852,7 +865,7 @@ public class VkBridgeService {
         handlePunish(peerId, actor, text, "ban");
     }
 
-    private void handlePunish(int peerId, String actor, String text, String type) {
+    private synchronized void handlePunish(int peerId, String actor, String text, String type) {
         String[] p = text.split("\\s+", 3);
         if (p.length < 3) { sendMessage(peerId, "Использование: !" + type + " <nick> <preset|time reason>"); return; }
         String target = p[1];
@@ -1267,10 +1280,13 @@ public class VkBridgeService {
                 Statement st = c.createStatement();
                 st.executeUpdate("create table if not exists tickets(id integer primary key, category text, status text, author text, assigned text, created_ms integer, updated_ms integer, first_response integer, replies integer, punish integer, reverted integer)");
                 st.executeUpdate("create table if not exists ticket_history(ticket_id integer, idx integer, line text, primary key(ticket_id, idx))");
+                st.executeUpdate("create table if not exists ticket_actions(id integer primary key autoincrement, ts integer, ticket_id integer, actor text, action text)");
                 st.executeUpdate("create table if not exists audit_log(id integer primary key autoincrement, ts integer, scope text, actor text, action text)");
                 st.executeUpdate("create table if not exists punishments(id integer primary key autoincrement, ts integer, type text, staff text, target text, reason text, reverted integer)");
+                st.executeUpdate("create table if not exists punishment_reversals(id integer primary key autoincrement, ts integer, type text, staff text, target text, reason text)");
                 st.executeUpdate("create table if not exists discipline(id integer primary key, ts integer, target text, type text, text text, actor text, forgiven integer)");
-                st.executeUpdate("create table if not exists pending(uuid text primary key, payload text, updated_ms integer)");
+                st.executeUpdate("create table if not exists pending_delivery(id integer primary key autoincrement, uuid text, ticket_id integer, body text, created_ms integer, delivered integer default 0)");
+                st.executeUpdate("create table if not exists staff_metrics(k text primary key, v text)");
             }
         } catch (Exception e) {
             plugin.getLogger().warning("SQLite init failed: " + e.getMessage());
@@ -1322,6 +1338,13 @@ public class VkBridgeService {
                     dr.forgiven = rs.getInt("forgiven") == 1;
                     dr.time = Instant.ofEpochMilli(rs.getLong("ts"));
                     discipline.add(dr);
+                }
+            }
+            try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery("select uuid,ticket_id,body,created_ms from pending_delivery where delivered=0 order by id")) {
+                while (rs.next()) {
+                    UUID uuid = UUID.fromString(rs.getString("uuid"));
+                    pendingByUuid.computeIfAbsent(uuid, k -> new ArrayDeque<>())
+                            .addLast(new PendingMessage(rs.getInt("ticket_id"), rs.getString("body"), rs.getLong("created_ms")));
                 }
             }
         } catch (Exception e) {
@@ -1391,6 +1414,19 @@ public class VkBridgeService {
         } catch (Exception ignored) {
         }
     }
+    private void dbPunishmentReversal(String type, String staff, String target, String reason) {
+        try (Connection c = db()) {
+            PreparedStatement ps = c.prepareStatement("insert into punishment_reversals(ts,type,staff,target,reason) values(?,?,?,?,?)");
+            ps.setLong(1, System.currentTimeMillis());
+            ps.setString(2, type);
+            ps.setString(3, staff);
+            ps.setString(4, target);
+            ps.setString(5, reason);
+            ps.executeUpdate();
+        } catch (Exception ignored) {
+        }
+    }
+
 
     private void dbDiscipline(DisciplineRecord r) {
         try (Connection c = db()) {
@@ -1409,10 +1445,11 @@ public class VkBridgeService {
 
     private void dbPending(UUID uuid, PendingMessage m) {
         try (Connection c = db()) {
-            PreparedStatement ps = c.prepareStatement("insert or replace into pending(uuid,payload,updated_ms) values(?,?,?)");
+            PreparedStatement ps = c.prepareStatement("insert into pending_delivery(uuid,ticket_id,body,created_ms,delivered) values(?,?,?,?,0)");
             ps.setString(1, uuid.toString());
-            ps.setString(2, m.ticketId + "|" + m.body.replace("|", " "));
-            ps.setLong(3, System.currentTimeMillis());
+            ps.setInt(2, m.ticketId);
+            ps.setString(3, m.body);
+            ps.setLong(4, m.createdAtMs);
             ps.executeUpdate();
         } catch (Exception ignored) {
         }
@@ -1420,7 +1457,9 @@ public class VkBridgeService {
 
     private void dbPendingDelete(UUID uuid) {
         try (Connection c = db()) {
-            c.createStatement().executeUpdate("delete from pending where uuid='" + uuid + "'");
+            PreparedStatement ps = c.prepareStatement("update pending_delivery set delivered=1 where uuid=? and delivered=0");
+            ps.setString(1, uuid.toString());
+            ps.executeUpdate();
         } catch (Exception ignored) {
         }
     }
@@ -1500,6 +1539,13 @@ public class VkBridgeService {
             }
         }
 
+        private static String compactTime(long ms) {
+            ZonedDateTime z = Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault());
+            String hh = z.getHour() < 10 ? "0" + z.getHour() : String.valueOf(z.getHour());
+            String mm = z.getMinute() < 10 ? "0" + z.getMinute() : String.valueOf(z.getMinute());
+            return z.toLocalDate() + " " + hh + ":" + mm;
+        }
+
         private String formatCard(boolean full) {
             List<String> rows = new ArrayList<>();
             rows.add("🎫 Ticket #" + id);
@@ -1507,8 +1553,8 @@ public class VkBridgeService {
             rows.add("Status: " + status);
             rows.add("Author: " + author);
             rows.add("Assigned: " + assignedVkId);
-            rows.add("Created: " + Instant.ofEpochMilli(createdAtMs));
-            rows.add("Updated: " + Instant.ofEpochMilli(updatedAtMs));
+            rows.add("Created: " + compactTime(createdAtMs));
+            rows.add("Updated: " + compactTime(updatedAtMs));
             rows.add("First response: " + (staff.firstResponseMinutes <= 0 ? "н/д" : staff.firstResponseMinutes + " мин"));
             rows.add("History:");
             int size = history.size();
