@@ -63,6 +63,8 @@ vk:
     cmd: 4
     tickets: 1
     punish: 2
+    audit: 3
+    discipline: 3
 
   retention:
     command-log-days: 7
