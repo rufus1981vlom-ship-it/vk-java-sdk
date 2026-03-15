@@ -106,3 +106,10 @@ YAML:
 - Опасные действия через 2 шага подтверждения: закрытие/перенос тикета, suspend/restore staff.
 - При устаревшем payload бот отвечает коротко и безопасно (без падений/дублей).
 - Stage-2: добавлены utility-кнопки для `!check` (lookup + punish preset/confirm), `!staffdiscipline` (status/revokecheck/suspend/restore) и фильтры для `!audit`/`!audit recent`.
+
+
+## P0 moderation controls
+- `!getip <nick>` — показать последний известный IP игрока (senior only).
+- `!banip <ip|nick> <reason>` / `!unbanip <ip> [reason]` — IP ban через config-команды.
+- `!offreport <nick> <time> [reason]` / `!onreport <nick> [reason]` — временный блок `/report` и `/rep`.
+- `!offhelpop <nick> <time> [reason]` / `!onhelpop <nick> [reason]` — временный блок `/helpop` и `/ac`.

@@ -65,6 +65,10 @@ vk:
     punish: 2
     audit: 3
     discipline: 3
+    manage_getip: 3
+    manage_banip: 3
+    manage_unbanip: 3
+    support_restrictions: 3
 
   retention:
     command-log-days: 7
@@ -87,3 +91,10 @@ staff-discipline:
     auto-restore-on-forgive: false
     restore-server-rights: false
     server-restore-commands: []
+
+
+ip-actions:
+  banip-commands:
+    - "ban-ip {ip} {reason}"
+  unbanip-commands:
+    - "pardon-ip {ip}"

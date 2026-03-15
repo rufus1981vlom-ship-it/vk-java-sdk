@@ -81,6 +81,11 @@ public class VkBridgeService {
     private final Map<String, String> banPresets = new HashMap<>();
     private final Map<String, String> warnPresets = new HashMap<>();
 
+    private final Map<UUID, PlayerIpState> playerIpState = new HashMap<>();
+    private final List<CommandRestriction> commandRestrictions = new ArrayList<>();
+    private List<String> ipBanCommands = new ArrayList<>();
+    private List<String> ipUnbanCommands = new ArrayList<>();
+
     private final Map<String, Long> antiSpam = new HashMap<>();
     private final Object stateLock = new Object();
 
@@ -130,6 +135,7 @@ public class VkBridgeService {
         UUID uuid = player.getUniqueId();
         onlineSince.put(uuid, now);
         lastSeen.put(uuid, now);
+        trackPlayerIp(player, now);
         deliverPending(uuid);
     }
 
@@ -142,6 +148,12 @@ public class VkBridgeService {
             onlineStats.computeIfAbsent(uuid, k -> new TreeMap<>()).merge(LocalDate.now(), delta, Long::sum);
         }
         lastSeen.put(uuid, now);
+        PlayerIpState st = playerIpState.get(uuid);
+        if (st != null) {
+            st.lastSeenAt = now;
+            st.updatedAt = now;
+            dbPlayerIpUpsert(st);
+        }
     }
 
     public void onPlayerCommand(String actor, String raw) {
@@ -151,9 +163,26 @@ public class VkBridgeService {
             commandLog.computeIfAbsent(actor.toLowerCase(Locale.ROOT), k -> new ArrayDeque<>()).addLast(new CommandLogEntry(Instant.now(), command));
         }
 
+        UUID actorUuid = resolveUuidByNickObj(actor);
         if (lower.startsWith("/ac ") || lower.startsWith("/helpop ")) {
+            if (actorUuid != null) {
+                CommandRestriction r = getActiveRestriction(actorUuid, RestrictionType.HELPOP_BLOCK);
+                if (r != null) {
+                    Player p = Bukkit.getPlayer(actorUuid);
+                    if (p != null) p.sendMessage("Команда /helpop временно недоступна до " + formatUntil(r.expiresAtMs) + (r.reason.isEmpty() ? "" : " | " + r.reason));
+                    return;
+                }
+            }
             createTicket(TicketCategory.SUPPORT, actor, tailAfterSpace(command), true);
         } else if (lower.startsWith("/report ") || lower.startsWith("/rep ")) {
+            if (actorUuid != null) {
+                CommandRestriction r = getActiveRestriction(actorUuid, RestrictionType.REPORT_BLOCK);
+                if (r != null) {
+                    Player p = Bukkit.getPlayer(actorUuid);
+                    if (p != null) p.sendMessage("Команда /report временно недоступна до " + formatUntil(r.expiresAtMs) + (r.reason.isEmpty() ? "" : " | " + r.reason));
+                    return;
+                }
+            }
             createTicket(TicketCategory.REPORT, actor, tailAfterSpace(command), true);
         }
 
@@ -179,6 +208,7 @@ public class VkBridgeService {
         commandPolicy = loadCommandPolicy();
         botAccessPolicy = loadBotAccessPolicy();
         loadTemplatesAndPresets();
+        loadIpActions();
         loadRetention();
         loadStaffDisciplinePolicy();
     }
@@ -203,6 +233,13 @@ public class VkBridgeService {
         ConfigurationSection sec = plugin.getConfig().getConfigurationSection(path);
         if (sec != null) for (String key : sec.getKeys(false)) target.put(key.toLowerCase(Locale.ROOT), sec.getString(key, ""));
         if (!target.containsKey(defaultKey)) target.put(defaultKey, defaultValue);
+    }
+
+    private void loadIpActions() {
+        ipBanCommands = new ArrayList<>(plugin.getConfig().getStringList("ip-actions.banip-commands"));
+        ipUnbanCommands = new ArrayList<>(plugin.getConfig().getStringList("ip-actions.unbanip-commands"));
+        if (ipBanCommands.isEmpty()) ipBanCommands = Collections.singletonList("ban-ip {ip} {reason}");
+        if (ipUnbanCommands.isEmpty()) ipUnbanCommands = Collections.singletonList("pardon-ip {ip}");
     }
 
     private void loadRetention() {
@@ -299,6 +336,10 @@ public class VkBridgeService {
         defaults.put("punish", 2);
         defaults.put("audit", 3);
         defaults.put("discipline", 3);
+        defaults.put("manage_getip", 3);
+        defaults.put("manage_banip", 3);
+        defaults.put("manage_unbanip", 3);
+        defaults.put("support_restrictions", 3);
 
         ConfigurationSection sec = plugin.getConfig().getConfigurationSection("vk.bot-command-access");
         if (sec == null) return new BotAccessPolicy(defaults);
@@ -507,12 +548,20 @@ public class VkBridgeService {
         if (lower.startsWith("!rnick") || lower.startsWith("!рник")) { requireAndRun(peerId, actorLevel, "rnick", () -> handleRnick(peerId, actorNick, text)); return; }
 
         if (lower.startsWith("!kick") || lower.startsWith("!кик")) { requireAndRun(peerId, actorLevel, "chat_kick", () -> handleChatKick(peerId, text)); return; }
-        if (lower.startsWith("!unban") || lower.startsWith("!разбан")) { requireAndRun(peerId, actorLevel, "chat_unban", () -> handleChatUnban(peerId, text)); return; }
-        if (lower.startsWith("!ban") || lower.startsWith("!бан")) { requireAndRun(peerId, actorLevel, "chat_ban", () -> handleBan(peerId, actorNick, text)); return; }
+        if (lower.startsWith("!unban ") || lower.startsWith("!разбан ")) { requireAndRun(peerId, actorLevel, "chat_unban", () -> handleChatUnban(peerId, text)); return; }
+        if (lower.startsWith("!ban ") || lower.startsWith("!бан ")) { requireAndRun(peerId, actorLevel, "chat_ban", () -> handleBan(peerId, actorNick, text)); return; }
         if (lower.startsWith("!mute ")) { requireAndRun(peerId, actorLevel, "punish", () -> handlePunish(peerId, actorNick, text, "mute")); return; }
         if (lower.startsWith("!warn ")) { requireAndRun(peerId, actorLevel, "punish", () -> handlePunish(peerId, actorNick, text, "warn")); return; }
         if (lower.equals("!noname") || lower.equals("!ноунэйм")) { requireAndRun(peerId, actorLevel, "noname", () -> handleNoName(peerId)); return; }
         if (lower.startsWith("!cmd ")) { requireAndRun(peerId, actorLevel, "cmd", () -> handleCmd(peerId, actorLevel, actorNick, text.substring(5).trim())); return; }
+
+        if (lower.startsWith("!getip ")) { requireAndRun(peerId, actorLevel, "manage_getip", () -> handleGetIp(peerId, actorNick, text)); return; }
+        if (lower.startsWith("!banip ")) { requireAndRun(peerId, actorLevel, "manage_banip", () -> handleBanIp(peerId, actorNick, text)); return; }
+        if (lower.startsWith("!unbanip ")) { requireAndRun(peerId, actorLevel, "manage_unbanip", () -> handleUnbanIp(peerId, actorNick, text)); return; }
+        if (lower.startsWith("!offreport ")) { requireAndRun(peerId, actorLevel, "support_restrictions", () -> handleOffRestriction(peerId, actorNick, text, RestrictionType.REPORT_BLOCK)); return; }
+        if (lower.startsWith("!onreport ")) { requireAndRun(peerId, actorLevel, "support_restrictions", () -> handleOnRestriction(peerId, actorNick, text, RestrictionType.REPORT_BLOCK)); return; }
+        if (lower.startsWith("!offhelpop ")) { requireAndRun(peerId, actorLevel, "support_restrictions", () -> handleOffRestriction(peerId, actorNick, text, RestrictionType.HELPOP_BLOCK)); return; }
+        if (lower.startsWith("!onhelpop ")) { requireAndRun(peerId, actorLevel, "support_restrictions", () -> handleOnRestriction(peerId, actorNick, text, RestrictionType.HELPOP_BLOCK)); return; }
 
         sendMessage(peerId, "⛔ Неизвестная команда. !help");
     }
@@ -542,9 +591,9 @@ public class VkBridgeService {
 
         if (showSupport) rows.add("Support: !tickets !ticket !reply !close !take !rlist");
         if (showMod) rows.add("Mod: !move !assign !unassign !reopen !check !lookup");
-        if (showPunish) rows.add("Punish: !mute !ban !warn !unmute !pardon !punishlog");
-        if (showAudit) rows.add("Audit: !audit ... !staffstatus !staffrevokecheck + discipline");
-        if (showAdmin) rows.add("Admin: !admin set/level/remove !rnick !cmd !vkban/!vkick/!vkunban");
+        if (showPunish) rows.add("Punish: !mute !ban !warn !unmute !pardon !punishlog !banip !unbanip");
+        if (showAudit) rows.add("Audit: !audit ... !staffstatus !staffrevokecheck + discipline + !getip");
+        if (showAdmin) rows.add("Admin: !admin set/level/remove !rnick !cmd !vkban/!vkick/!vkunban !offreport !offhelpop");
 
         return String.join("\n", rows);
     }
@@ -1528,6 +1577,199 @@ public class VkBridgeService {
         try { return Bukkit.getOfflinePlayer(nick).getUniqueId().toString(); } catch (Exception e) { return ""; }
     }
 
+    private UUID resolveUuidByNickObj(String nick) {
+        if (nick == null || nick.isEmpty()) return null;
+        try { return Bukkit.getOfflinePlayer(nick).getUniqueId(); } catch (Exception e) { return null; }
+    }
+
+    private void trackPlayerIp(Player player, long now) {
+        if (player == null) return;
+        UUID uuid = player.getUniqueId();
+        String ip = player.getAddress() != null && player.getAddress().getAddress() != null
+                ? player.getAddress().getAddress().getHostAddress() : "";
+        PlayerIpState st = playerIpState.get(uuid);
+        if (st == null) {
+            st = new PlayerIpState();
+            st.uuid = uuid;
+            st.firstSeenAt = now;
+            playerIpState.put(uuid, st);
+        }
+        st.nick = player.getName();
+        if (ip != null && !ip.isEmpty()) st.lastIp = ip;
+        st.lastLoginAt = now;
+        st.lastSeenAt = now;
+        st.updatedAt = now;
+        dbPlayerIpUpsert(st);
+    }
+
+    private PlayerIpState resolvePlayerIpStateByNick(String nick) {
+        if (nick == null || nick.isEmpty()) return null;
+        UUID uuid = resolveUuidByNickObj(nick);
+        if (uuid != null) {
+            PlayerIpState byUuid = playerIpState.get(uuid);
+            if (byUuid != null) return byUuid;
+        }
+        for (PlayerIpState st : playerIpState.values()) if (nick.equalsIgnoreCase(st.nick)) return st;
+        return null;
+    }
+
+    private void handleGetIp(int peerId, String actor, String text) {
+        String[] p = text.split("\\s+");
+        if (p.length != 2) { sendMessage(peerId, "Использование: !getip <nick>"); return; }
+        PlayerIpState st = resolvePlayerIpStateByNick(p[1]);
+        if (st == null || st.lastIp == null || st.lastIp.isEmpty()) { sendMessage(peerId, "IP не найден"); return; }
+        List<String> rows = new ArrayList<>();
+        rows.add("🌐 Игрок: " + (st.nick == null || st.nick.isEmpty() ? p[1] : st.nick));
+        rows.add("IP: " + st.lastIp);
+        rows.add("Последний онлайн: " + formatLastSeen(st.lastSeenAt, false));
+        sendMessage(peerId, String.join("\n", rows));
+        audit("GET_IP_LOOKUP", actor, "nick=" + p[1] + " ip=" + st.lastIp);
+    }
+
+    private void handleBanIp(int peerId, String actor, String text) {
+        String[] p = text.split("\\s+", 3);
+        if (p.length < 3) { sendMessage(peerId, "Использование: !banip <ip|nick> <reason>"); return; }
+        String target = p[1];
+        String reason = p[2];
+        String ip = target;
+        String nick = "";
+        String uuid = "";
+        if (!target.matches("\\d{1,3}(\\.\\d{1,3}){3}")) {
+            PlayerIpState st = resolvePlayerIpStateByNick(target);
+            if (st == null || st.lastIp == null || st.lastIp.isEmpty()) { sendMessage(peerId, "IP не найден"); return; }
+            ip = st.lastIp;
+            nick = st.nick == null ? target : st.nick;
+            uuid = st.uuid == null ? "" : st.uuid.toString();
+        }
+        ServerCommandExecResult res = executeIpCommands(ipBanCommands, ip, nick, uuid, actor, reason, "IP_BAN_ISSUED", actor);
+        sendMessage(peerId, "✅ IP-бан выдан\nIP: " + ip + "\nПричина: " + reason + "\nРезультат: " + (res.ok ? "OK" : "PARTIAL"));
+        audit("IP_BAN_ISSUED", actor, "target=" + target + " ip=" + ip + " reason=" + reason + " failed=" + res.failed);
+    }
+
+    private void handleUnbanIp(int peerId, String actor, String text) {
+        String[] p = text.split("\\s+", 3);
+        if (p.length < 2) { sendMessage(peerId, "Использование: !unbanip <ip> [reason]"); return; }
+        String ip = p[1];
+        String reason = p.length >= 3 ? p[2] : "manual";
+        ServerCommandExecResult res = executeIpCommands(ipUnbanCommands, ip, "", "", actor, reason, "IP_BAN_REMOVED", actor);
+        sendMessage(peerId, "✅ IP-бан снят\nIP: " + ip + "\nРезультат: " + (res.ok ? "OK" : "PARTIAL"));
+        audit("IP_BAN_REMOVED", actor, "ip=" + ip + " reason=" + reason + " failed=" + res.failed);
+    }
+
+    private void handleOffRestriction(int peerId, String actor, String text, RestrictionType type) {
+        String[] p = text.split("\\s+", 4);
+        if (p.length < 3) { sendMessage(peerId, "Использование: !" + (type == RestrictionType.REPORT_BLOCK ? "offreport" : "offhelpop") + " <nick> <time> [reason]"); return; }
+        UUID uuid = resolveUuidByNickObj(p[1]);
+        if (uuid == null) { sendMessage(peerId, "Игрок не найден"); return; }
+        long durationMs = parseDurationToken(p[2]);
+        if (durationMs <= 0) { sendMessage(peerId, "Неверный формат времени. Пример: 12h, 30m, 2d"); return; }
+        long expiresAt = System.currentTimeMillis() + durationMs;
+        String reason = p.length >= 4 ? p[3] : "manual";
+
+        CommandRestriction existing = getActiveRestriction(uuid, type);
+        if (existing != null) {
+            existing.expiresAtMs = expiresAt;
+            existing.reason = reason;
+            existing.createdBy = actor;
+            dbRestrictionUpsert(existing);
+        } else {
+            CommandRestriction r = new CommandRestriction();
+            r.playerUuid = uuid;
+            r.nick = p[1];
+            r.type = type;
+            r.reason = reason;
+            r.createdBy = actor;
+            r.createdAtMs = System.currentTimeMillis();
+            r.expiresAtMs = expiresAt;
+            r.active = true;
+            commandRestrictions.add(r);
+            dbRestrictionUpsert(r);
+        }
+        String scope = type == RestrictionType.REPORT_BLOCK ? "REPORT_BLOCK_ISSUED" : "HELPOP_BLOCK_ISSUED";
+        audit(scope, actor, "target=" + p[1] + " until=" + expiresAt + " reason=" + reason);
+        sendMessage(peerId, "✅ " + (type == RestrictionType.REPORT_BLOCK ? "/report" : "/helpop") + " отключён\nИгрок: " + p[1] + "\nСрок: " + p[2] + "\nПричина: " + reason);
+    }
+
+    private void handleOnRestriction(int peerId, String actor, String text, RestrictionType type) {
+        String[] p = text.split("\\s+", 3);
+        if (p.length < 2) { sendMessage(peerId, "Использование: !" + (type == RestrictionType.REPORT_BLOCK ? "onreport" : "onhelpop") + " <nick> [reason]"); return; }
+        UUID uuid = resolveUuidByNickObj(p[1]);
+        if (uuid == null) { sendMessage(peerId, "Игрок не найден"); return; }
+        CommandRestriction r = getActiveRestriction(uuid, type);
+        if (r == null) { sendMessage(peerId, "Активной блокировки нет"); return; }
+        r.active = false;
+        r.removedAtMs = System.currentTimeMillis();
+        r.removedBy = actor;
+        dbRestrictionUpsert(r);
+        String reason = p.length >= 3 ? p[2] : "manual";
+        String scope = type == RestrictionType.REPORT_BLOCK ? "REPORT_BLOCK_REMOVED" : "HELPOP_BLOCK_REMOVED";
+        audit(scope, actor, "target=" + p[1] + " reason=" + reason);
+        sendMessage(peerId, "✅ Ограничение снято: " + p[1]);
+    }
+
+    private CommandRestriction getActiveRestriction(UUID uuid, RestrictionType type) {
+        long now = System.currentTimeMillis();
+        for (CommandRestriction r : commandRestrictions) {
+            if (!r.active || !type.equals(r.type) || !uuid.equals(r.playerUuid)) continue;
+            if (r.expiresAtMs > 0 && r.expiresAtMs <= now) {
+                r.active = false;
+                r.removedAtMs = now;
+                r.removedBy = "SYSTEM_EXPIRE";
+                dbRestrictionUpsert(r);
+                continue;
+            }
+            return r;
+        }
+        return null;
+    }
+
+    private long parseDurationToken(String token) {
+        if (token == null || token.isEmpty()) return -1;
+        String t = token.toLowerCase(Locale.ROOT).trim();
+        long mul;
+        if (t.endsWith("m")) mul = 60_000L;
+        else if (t.endsWith("h")) mul = 3_600_000L;
+        else if (t.endsWith("d")) mul = 86_400_000L;
+        else return -1;
+        try { return Long.parseLong(t.substring(0, t.length() - 1)) * mul; } catch (Exception e) { return -1; }
+    }
+
+    private String formatUntil(long epochMillis) {
+        if (epochMillis <= 0) return "неизвестно";
+        Instant when = Instant.ofEpochMilli(epochMillis);
+        if (when.isBefore(Instant.now())) return "истекло";
+        ZonedDateTime z = when.atZone(ZoneId.systemDefault());
+        LocalDate day = z.toLocalDate();
+        LocalDate today = LocalDate.now();
+        LocalTime t = z.toLocalTime().truncatedTo(ChronoUnit.MINUTES);
+        if (day.equals(today)) return "сегодня в " + pad2(t.getHour()) + ":" + pad2(t.getMinute());
+        if (day.equals(today.plusDays(1))) return "завтра в " + pad2(t.getHour()) + ":" + pad2(t.getMinute());
+        return day + " " + pad2(t.getHour()) + ":" + pad2(t.getMinute());
+    }
+
+    private ServerCommandExecResult executeIpCommands(List<String> commands, String ip, String nick, String uuid, String staff, String reason, String auditType, String actor) {
+        boolean ok = true;
+        int failed = 0;
+        for (String raw : commands) {
+            String cmd = raw.replace("{ip}", ip == null ? "" : ip)
+                    .replace("{nick}", nick == null ? "" : nick)
+                    .replace("{uuid}", uuid == null ? "" : uuid)
+                    .replace("{reason}", reason == null ? "" : reason)
+                    .replace("{staff}", staff == null ? "" : staff)
+                    .trim();
+            if (cmd.isEmpty()) continue;
+            try {
+                Bukkit.getScheduler().runTask(plugin, () -> Bukkit.dispatchCommand(Bukkit.getConsoleSender(), cmd));
+                audit(auditType, actor, "cmd=" + cmd + " result=queued");
+            } catch (Exception e) {
+                ok = false;
+                failed++;
+                audit(auditType, actor, "cmd=" + cmd + " result=error:" + e.getMessage());
+            }
+        }
+        return new ServerCommandExecResult(ok, failed);
+    }
+
     private Long resolveVkIdForStaff(String key, StaffStateRecord state) {
         try { return Long.parseLong(key); } catch (Exception ignored) {}
         for (Map.Entry<Long, AdminData> e : admins.entrySet()) if (e.getValue().nickname.equalsIgnoreCase(state.nick)) return e.getKey();
@@ -1798,6 +2040,16 @@ public class VkBridgeService {
         List<Integer> delete = new ArrayList<>();
         for (Ticket t : tickets.values()) if (t.status == TicketStatus.CLOSED && t.updatedAtMs < closeBorder) delete.add(t.id);
         for (Integer id : delete) { tickets.remove(id); dbTicketDelete(id); }
+
+        long now = System.currentTimeMillis();
+        for (CommandRestriction r : commandRestrictions) {
+            if (r.active && r.expiresAtMs > 0 && r.expiresAtMs <= now) {
+                r.active = false;
+                r.removedAtMs = now;
+                r.removedBy = "SYSTEM_EXPIRE";
+                dbRestrictionUpsert(r);
+            }
+        }
     }
 
     private Ticket findTicket(String raw) {
@@ -2234,6 +2486,8 @@ public class VkBridgeService {
                 st.executeUpdate("create table if not exists pending_delivery(id integer primary key autoincrement, uuid text, ticket_id integer, body text, created_ms integer, delivered integer default 0)");
                 st.executeUpdate("create table if not exists staff_metrics(k text primary key, v text)");
                 st.executeUpdate("create table if not exists staff_state(staff_key text primary key, nick text, uuid text, status text, suspended_at integer, suspended_by text, suspended_reason text, suspended_source text, updated_at integer, last_vk_remove_status text, last_vk_removed_chats integer, last_server_revoke_status text, last_server_failed_commands integer)");
+                st.executeUpdate("create table if not exists player_ip_state(uuid text primary key, nick text, last_ip text, first_seen_at integer, last_seen_at integer, last_login_at integer, updated_at integer)");
+                st.executeUpdate("create table if not exists command_restrictions(id integer primary key autoincrement, player_uuid text, nick text, type text, reason text, created_by text, created_at integer, expires_at integer, active integer, removed_at integer, removed_by text)");
                 try { st.executeUpdate("alter table staff_state add column last_vk_remove_status text"); } catch (Exception ignored) {}
                 try { st.executeUpdate("alter table staff_state add column last_vk_removed_chats integer"); } catch (Exception ignored) {}
                 try { st.executeUpdate("alter table staff_state add column last_server_revoke_status text"); } catch (Exception ignored) {}
@@ -2308,6 +2562,36 @@ public class VkBridgeService {
                     stRec.lastServerRevokeStatus = rs.getString("last_server_revoke_status");
                     stRec.lastServerFailedCommands = rs.getInt("last_server_failed_commands");
                     staffStateByKey.put(stRec.key, stRec);
+                }
+            }
+            try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery("select * from player_ip_state")) {
+                while (rs.next()) {
+                    PlayerIpState pi = new PlayerIpState();
+                    pi.uuid = UUID.fromString(rs.getString("uuid"));
+                    pi.nick = rs.getString("nick");
+                    pi.lastIp = rs.getString("last_ip");
+                    pi.firstSeenAt = rs.getLong("first_seen_at");
+                    pi.lastSeenAt = rs.getLong("last_seen_at");
+                    pi.lastLoginAt = rs.getLong("last_login_at");
+                    pi.updatedAt = rs.getLong("updated_at");
+                    playerIpState.put(pi.uuid, pi);
+                }
+            }
+            try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery("select * from command_restrictions where active=1 order by id")) {
+                while (rs.next()) {
+                    CommandRestriction cr = new CommandRestriction();
+                    cr.id = rs.getLong("id");
+                    cr.playerUuid = UUID.fromString(rs.getString("player_uuid"));
+                    cr.nick = rs.getString("nick");
+                    cr.type = RestrictionType.valueOf(rs.getString("type"));
+                    cr.reason = rs.getString("reason");
+                    cr.createdBy = rs.getString("created_by");
+                    cr.createdAtMs = rs.getLong("created_at");
+                    cr.expiresAtMs = rs.getLong("expires_at");
+                    cr.active = rs.getInt("active") == 1;
+                    cr.removedAtMs = rs.getLong("removed_at");
+                    cr.removedBy = rs.getString("removed_by");
+                    commandRestrictions.add(cr);
                 }
             }
             try (Statement st = c.createStatement(); ResultSet rs = st.executeQuery("select uuid,ticket_id,body,created_ms from pending_delivery where delivered=0 order by id")) {
@@ -2455,6 +2739,58 @@ public class VkBridgeService {
         }
     }
 
+    private void dbPlayerIpUpsert(PlayerIpState st) {
+        if (st == null || st.uuid == null) return;
+        try (Connection c = db()) {
+            PreparedStatement ps = c.prepareStatement("insert or replace into player_ip_state(uuid,nick,last_ip,first_seen_at,last_seen_at,last_login_at,updated_at) values(?,?,?,?,?,?,?)");
+            ps.setString(1, st.uuid.toString());
+            ps.setString(2, st.nick == null ? "" : st.nick);
+            ps.setString(3, st.lastIp == null ? "" : st.lastIp);
+            ps.setLong(4, st.firstSeenAt);
+            ps.setLong(5, st.lastSeenAt);
+            ps.setLong(6, st.lastLoginAt);
+            ps.setLong(7, st.updatedAt);
+            ps.executeUpdate();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void dbRestrictionUpsert(CommandRestriction r) {
+        if (r == null || r.playerUuid == null) return;
+        try (Connection c = db()) {
+            if (r.id <= 0) {
+                PreparedStatement ps = c.prepareStatement("insert into command_restrictions(player_uuid,nick,type,reason,created_by,created_at,expires_at,active,removed_at,removed_by) values(?,?,?,?,?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
+                ps.setString(1, r.playerUuid.toString());
+                ps.setString(2, r.nick == null ? "" : r.nick);
+                ps.setString(3, r.type.name());
+                ps.setString(4, r.reason == null ? "" : r.reason);
+                ps.setString(5, r.createdBy == null ? "" : r.createdBy);
+                ps.setLong(6, r.createdAtMs);
+                ps.setLong(7, r.expiresAtMs);
+                ps.setInt(8, r.active ? 1 : 0);
+                ps.setLong(9, r.removedAtMs);
+                ps.setString(10, r.removedBy == null ? "" : r.removedBy);
+                ps.executeUpdate();
+                try (ResultSet keys = ps.getGeneratedKeys()) { if (keys.next()) r.id = keys.getLong(1); }
+            } else {
+                PreparedStatement ps = c.prepareStatement("update command_restrictions set player_uuid=?,nick=?,type=?,reason=?,created_by=?,created_at=?,expires_at=?,active=?,removed_at=?,removed_by=? where id=?");
+                ps.setString(1, r.playerUuid.toString());
+                ps.setString(2, r.nick == null ? "" : r.nick);
+                ps.setString(3, r.type.name());
+                ps.setString(4, r.reason == null ? "" : r.reason);
+                ps.setString(5, r.createdBy == null ? "" : r.createdBy);
+                ps.setLong(6, r.createdAtMs);
+                ps.setLong(7, r.expiresAtMs);
+                ps.setInt(8, r.active ? 1 : 0);
+                ps.setLong(9, r.removedAtMs);
+                ps.setString(10, r.removedBy == null ? "" : r.removedBy);
+                ps.setLong(11, r.id);
+                ps.executeUpdate();
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     private int nextDisciplineId() {
         int max = 0;
         for (DisciplineRecord r : discipline) max = Math.max(max, r.id);
@@ -2466,6 +2802,7 @@ public class VkBridgeService {
     private enum TicketStatus { OPEN, IN_PROGRESS, WAITING_PLAYER, CLOSED }
     private enum DisciplineType { NOTE, WARNING, REPRIMAND }
     private enum StaffStatus { ACTIVE, SUSPENDED }
+    private enum RestrictionType { REPORT_BLOCK, HELPOP_BLOCK }
 
 
     private static class StaffStateRecord {
@@ -2525,6 +2862,30 @@ public class VkBridgeService {
         private final String body;
         private final long createdAtMs;
         private PendingMessage(int ticketId, String body, long createdAtMs) { this.ticketId = ticketId; this.body = body; this.createdAtMs = createdAtMs; }
+    }
+
+    private static class PlayerIpState {
+        private UUID uuid;
+        private String nick = "";
+        private String lastIp = "";
+        private long firstSeenAt;
+        private long lastSeenAt;
+        private long lastLoginAt;
+        private long updatedAt;
+    }
+
+    private static class CommandRestriction {
+        private long id;
+        private UUID playerUuid;
+        private String nick = "";
+        private RestrictionType type;
+        private String reason = "";
+        private String createdBy = "";
+        private long createdAtMs;
+        private long expiresAtMs;
+        private boolean active;
+        private long removedAtMs;
+        private String removedBy = "";
     }
 
     private static class StaffTicketStats {
