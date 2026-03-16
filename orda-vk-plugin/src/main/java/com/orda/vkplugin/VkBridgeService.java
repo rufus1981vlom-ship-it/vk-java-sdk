@@ -190,7 +190,7 @@ public class VkBridgeService {
         if (lower.equals("ac") || lower.equals("helpop")) {
             CommandRestriction restriction = getActiveRestriction(actorUuid, RestrictionType.HELPOP_BLOCK);
             if (restriction != null) {
-                player.sendMessage("Команда /helpop временно недоступна до " + formatUntil(restriction.expiresAtMs) + (restriction.reason.isEmpty() ? "" : " | " + restriction.reason));
+                player.sendMessage("У вас бан помощи! До " + formatUntil(restriction.expiresAtMs));
                 return true;
             }
             createTicket(TicketCategory.SUPPORT, player.getName(), message, true);
@@ -200,7 +200,7 @@ public class VkBridgeService {
 
         CommandRestriction restriction = getActiveRestriction(actorUuid, RestrictionType.REPORT_BLOCK);
         if (restriction != null) {
-            player.sendMessage("Команда /report временно недоступна до " + formatUntil(restriction.expiresAtMs) + (restriction.reason.isEmpty() ? "" : " | " + restriction.reason));
+            player.sendMessage("У вас бан репорта! До " + formatUntil(restriction.expiresAtMs));
             return true;
         }
         createTicket(TicketCategory.REPORT, player.getName(), message, true);
@@ -421,6 +421,7 @@ public class VkBridgeService {
 
         String text = message.has("text") ? message.get("text").getAsString().trim() : "";
         if (text.isEmpty()) return;
+        if (!text.startsWith("!")) return;
 
         AdminData actor = admins.get(message.get("from_id").getAsLong());
         if (actor == null) {
@@ -435,6 +436,7 @@ public class VkBridgeService {
         if (obj == null) return;
         int peerId = obj.has("peer_id") ? obj.get("peer_id").getAsInt() : 0;
         long userId = obj.has("user_id") ? obj.get("user_id").getAsLong() : 0L;
+        int conversationMessageId = obj.has("conversation_message_id") ? obj.get("conversation_message_id").getAsInt() : 0;
         String eventId = obj.has("event_id") ? obj.get("event_id").getAsString() : "";
         if (peerId <= 0 || userId <= 0 || !isKnownPeer(peerId)) return;
 
@@ -464,7 +466,7 @@ public class VkBridgeService {
             if (action.equals("ticket_view") || action.equals("ticket_full") || action.equals("ticket_take") || action.equals("ticket_unassign")
                     || action.equals("ticket_move_prepare") || action.equals("ticket_move_confirm") || action.equals("ticket_close_prepare") || action.equals("ticket_close_confirm")
                     || action.equals("ticket_reply_hint")) {
-                requireAndRun(peerId, actor.level, "tickets", () -> handleTicketCallback(peerId, actor.nickname, actor.level, userId, eventId, action, payload));
+                requireAndRun(peerId, actor.level, "tickets", () -> handleTicketCallback(peerId, actor.nickname, actor.level, userId, eventId, conversationMessageId, action, payload));
                 return;
             }
 
@@ -472,22 +474,22 @@ public class VkBridgeService {
                     || action.equals("staff_suspend_prepare") || action.equals("staff_suspend_confirm")
                     || action.equals("staff_restore_prepare") || action.equals("staff_restore_confirm")
                     || action.equals("staffwarn_hint") || action.equals("staffreprimand_hint")) {
-                requireAndRun(peerId, actor.level, "audit", () -> handleStaffCallback(peerId, actor.nickname, actor.level, userId, eventId, action, payload));
+                requireAndRun(peerId, actor.level, "audit", () -> handleStaffCallback(peerId, actor.nickname, actor.level, userId, eventId, conversationMessageId, action, payload));
                 return;
             }
 
             if (action.startsWith("check_")) {
-                requireAndRun(peerId, actor.level, "tickets", () -> handleCheckCallback(peerId, actor.nickname, actor.level, userId, eventId, action, payload));
+                requireAndRun(peerId, actor.level, "tickets", () -> handleCheckCallback(peerId, actor.nickname, actor.level, userId, eventId, conversationMessageId, action, payload));
                 return;
             }
 
             if (action.startsWith("sdisc_")) {
-                requireAndRun(peerId, actor.level, "discipline", () -> handleStaffDisciplineCallback(peerId, actor.nickname, actor.level, userId, eventId, action, payload));
+                requireAndRun(peerId, actor.level, "discipline", () -> handleStaffDisciplineCallback(peerId, actor.nickname, actor.level, userId, eventId, conversationMessageId, action, payload));
                 return;
             }
 
             if (action.equals("audit_filter") || action.equals("audit_refresh")) {
-                requireAndRun(peerId, actor.level, "audit", () -> handleAuditCallback(peerId, actor.nickname, actor.level, userId, eventId, action, payload));
+                requireAndRun(peerId, actor.level, "audit", () -> handleAuditCallback(peerId, actor.nickname, actor.level, userId, eventId, conversationMessageId, action, payload));
                 return;
             }
 
@@ -521,6 +523,11 @@ public class VkBridgeService {
 
     private void handleCommand(int peerId, int actorLevel, String actorNick, String text) {
         String lower = text.toLowerCase(Locale.ROOT);
+
+        if (!lower.startsWith("!")) return;
+
+        if (lower.equals("!online")) { sendMessage(peerId, "🟢 Онлайн: " + Bukkit.getOnlinePlayers().size()); return; }
+        if (lower.equals("!status")) { sendMessage(peerId, "✅ OrdaVK работает\nОнлайн: " + Bukkit.getOnlinePlayers().size() + "\nТикетов: " + tickets.size()); return; }
 
         if (lower.equals("!help") || lower.equals("!help support") || lower.equals("!help mod") || lower.equals("!help admin") || lower.equals("!help punish") || lower.equals("!help audit")) { sendMessage(peerId, formatHelp(actorLevel, lower)); return; }
 
@@ -561,8 +568,10 @@ public class VkBridgeService {
         if (lower.startsWith("!vkban ")) { requireAndRun(peerId, actorLevel, "chat_ban", () -> handleChatBan(peerId, text.replaceFirst("(?i)!vkban", "!ban"))); return; }
         if (lower.startsWith("!vkunban ")) { requireAndRun(peerId, actorLevel, "chat_unban", () -> handleChatUnban(peerId, text.replaceFirst("(?i)!vkunban", "!unban"))); return; }
 
+        if (lower.startsWith("!admin add") || lower.startsWith("!admin добавить")) { requireAndRun(peerId, actorLevel, "admin_set", () -> handleAdminSet(peerId, actorLevel, actorNick, text.replaceFirst("(?i)!admin\\s+add", "!admin set"))); return; }
         if (lower.startsWith("!admin set") || lower.startsWith("!admin сет")) { requireAndRun(peerId, actorLevel, "admin_set", () -> handleAdminSet(peerId, actorLevel, actorNick, text)); return; }
         if (lower.startsWith("!admin level") || lower.startsWith("!admin уровень") || lower.startsWith("!admin левел")) { requireAndRun(peerId, actorLevel, "admin_level", () -> handleAdminLevel(peerId, actorLevel, actorNick, text)); return; }
+        if (lower.startsWith("!admin info") || lower.startsWith("!admin инфо")) { requireAndRun(peerId, actorLevel, "admins", () -> handleAdminInfo(peerId, text)); return; }
         if (lower.startsWith("!admin remove") || lower.startsWith("!admin удалить")) { requireAndRun(peerId, actorLevel, "admin_remove", () -> handleAdminRemove(peerId, actorLevel, actorNick, text)); return; }
         if (lower.startsWith("!rnick") || lower.startsWith("!рник")) { requireAndRun(peerId, actorLevel, "rnick", () -> handleRnick(peerId, actorNick, text)); return; }
 
@@ -610,9 +619,9 @@ public class VkBridgeService {
 
         if (showSupport) rows.add("Support: !tickets !ticket !reply !close !take !rlist");
         if (showMod) rows.add("Mod: !move !assign !unassign !reopen !check !lookup");
-        if (showPunish) rows.add("Punish: !mute !ban !warn !unmute !pardon !punishlog !banip !unbanip");
-        if (showAudit) rows.add("Audit: !audit ... !staffstatus !staffrevokecheck + discipline + !getip");
-        if (showAdmin) rows.add("Admin: !admin set/level/remove !rnick !cmd !vkban/!vkick/!vkunban !offreport !offhelpop");
+        if (showPunish) rows.add("Наказания: !mute !ban !warn !unmute !pardon !punishlog !banip !unbanip");
+        if (showAudit) rows.add("Аудит: !audit ... !staffstatus !staffrevokecheck + discipline + !getip");
+        if (showAdmin) rows.add("Админ: !admin add/set/level/info/remove !rnick !cmd !vkban/!vkick/!vkunban !offreport !offhelpop !online !status");
 
         return String.join("\n", rows);
     }
@@ -666,7 +675,7 @@ public class VkBridgeService {
         sendMessage(peerId, t.formatCard(full), buildTicketKeyboard(t, full, actorLevel));
     }
 
-    private void handleTicketCallback(int peerId, String actorNick, int actorLevel, long userId, String eventId, String action, JsonObject payload) {
+    private void handleTicketCallback(int peerId, String actorNick, int actorLevel, long userId, String eventId, int conversationMessageId, String action, JsonObject payload) {
         int id = payload.has("id") ? payload.get("id").getAsInt() : 0;
         Ticket t = tickets.get(id);
         if (t == null) {
@@ -676,13 +685,13 @@ public class VkBridgeService {
 
         if (action.equals("ticket_view") || action.equals("ticket_full")) {
             boolean full = action.equals("ticket_full");
-            sendMessage(peerId, t.formatCard(full), buildTicketKeyboard(t, full, actorLevel));
+            updateCallbackMessage(peerId, conversationMessageId, t.formatCard(full), buildTicketKeyboard(t, full, actorLevel));
             answerCallback(peerId, userId, eventId, "✅ Карточка обновлена");
             return;
         }
 
         if (action.equals("ticket_reply_hint")) {
-            sendMessage(peerId, "↪ Ответьте так: !reply " + t.id + " <текст>");
+            updateCallbackMessage(peerId, conversationMessageId, "↪ Ответьте так: !reply " + t.id + " <текст>", buildTicketKeyboard(t, false, actorLevel));
             answerCallback(peerId, userId, eventId, "✅ Подсказка отправлена");
             return;
         }
@@ -694,7 +703,7 @@ public class VkBridgeService {
             }
             handleTake(peerId, actorNick, "!take " + t.id);
             answerCallback(peerId, userId, eventId, "✅ Тикет взят");
-            sendMessage(peerId, t.formatCard(false), buildTicketKeyboard(t, false, actorLevel));
+            updateCallbackMessage(peerId, conversationMessageId, t.formatCard(false), buildTicketKeyboard(t, false, actorLevel));
             return;
         }
 
@@ -705,12 +714,12 @@ public class VkBridgeService {
             }
             handleUnassign(peerId, actorNick, "!unassign " + t.id);
             answerCallback(peerId, userId, eventId, "✅ Назначение снято");
-            sendMessage(peerId, t.formatCard(false), buildTicketKeyboard(t, false, actorLevel));
+            updateCallbackMessage(peerId, conversationMessageId, t.formatCard(false), buildTicketKeyboard(t, false, actorLevel));
             return;
         }
 
         if (action.equals("ticket_close_prepare")) {
-            sendMessage(peerId, "Закрыть тикет #" + t.id + "?", buildTicketCloseConfirmKeyboard(t.id));
+            updateCallbackMessage(peerId, conversationMessageId, "Закрыть тикет #" + t.id + "?", buildTicketCloseConfirmKeyboard(t.id));
             answerCallback(peerId, userId, eventId, "⚠ Требуется подтверждение");
             return;
         }
@@ -722,13 +731,13 @@ public class VkBridgeService {
             }
             handleClose(peerId, actorNick, "!close " + t.id + " via_button");
             answerCallback(peerId, userId, eventId, "✅ Тикет закрыт");
-            sendMessage(peerId, t.formatCard(false), buildTicketKeyboard(t, false, actorLevel));
+            updateCallbackMessage(peerId, conversationMessageId, t.formatCard(false), buildTicketKeyboard(t, false, actorLevel));
             return;
         }
 
         if (action.equals("ticket_move_prepare")) {
             String to = payload.has("to") ? payload.get("to").getAsString() : "support";
-            sendMessage(peerId, "Переместить тикет #" + t.id + " в " + to + "?", buildTicketMoveConfirmKeyboard(t.id, to));
+            updateCallbackMessage(peerId, conversationMessageId, "Переместить тикет #" + t.id + " в " + to + "?", buildTicketMoveConfirmKeyboard(t.id, to));
             answerCallback(peerId, userId, eventId, "⚠ Требуется подтверждение");
             return;
         }
@@ -746,7 +755,7 @@ public class VkBridgeService {
             }
             handleMove(peerId, actorNick, "!move " + t.id + " " + to);
             answerCallback(peerId, userId, eventId, "✅ Тикет перемещён");
-            sendMessage(peerId, t.formatCard(false), buildTicketKeyboard(t, false, actorLevel));
+            updateCallbackMessage(peerId, conversationMessageId, t.formatCard(false), buildTicketKeyboard(t, false, actorLevel));
             ChatType targetChat = target == TicketCategory.SUPPORT ? ChatType.SUPPORT : ChatType.MODMANAGE;
             sendToChat(targetChat, t.formatCard(false), buildTicketKeyboard(t, false, actorLevel));
             return;
@@ -755,7 +764,7 @@ public class VkBridgeService {
         answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
     }
 
-    private void handleStaffCallback(int peerId, String actorNick, int actorLevel, long userId, String eventId, String action, JsonObject payload) {
+    private void handleStaffCallback(int peerId, String actorNick, int actorLevel, long userId, String eventId, int conversationMessageId, String action, JsonObject payload) {
         String key = payload.has("k") ? payload.get("k").getAsString() : "";
         if (key.isEmpty()) {
             answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
@@ -778,18 +787,18 @@ public class VkBridgeService {
             return;
         }
         if (action.equals("staffwarn_hint")) {
-            sendMessage(peerId, "Используйте: !staffwarn " + key + " <причина>");
+            updateCallbackMessage(peerId, conversationMessageId, "Используйте: !staffwarn " + key + " <причина>", buildStaffStatusKeyboard(key, actorLevel));
             answerCallback(peerId, userId, eventId, "✅ Подсказка отправлена");
             return;
         }
         if (action.equals("staffreprimand_hint")) {
-            sendMessage(peerId, "Используйте: !staffreprimand " + key + " <причина>");
+            updateCallbackMessage(peerId, conversationMessageId, "Используйте: !staffreprimand " + key + " <причина>", buildStaffStatusKeyboard(key, actorLevel));
             answerCallback(peerId, userId, eventId, "✅ Подсказка отправлена");
             return;
         }
 
         if (action.equals("staff_suspend_prepare")) {
-            sendMessage(peerId, "Подтвердить suspend для " + key + "?", buildStaffSuspendConfirmKeyboard(key));
+            updateCallbackMessage(peerId, conversationMessageId, "Подтвердить suspend для " + key + "?", buildStaffSuspendConfirmKeyboard(key));
             answerCallback(peerId, userId, eventId, "⚠ Требуется подтверждение");
             return;
         }
@@ -806,7 +815,7 @@ public class VkBridgeService {
         }
 
         if (action.equals("staff_restore_prepare")) {
-            sendMessage(peerId, "Подтвердить restore для " + key + "?", buildStaffRestoreConfirmKeyboard(key));
+            updateCallbackMessage(peerId, conversationMessageId, "Подтвердить restore для " + key + "?", buildStaffRestoreConfirmKeyboard(key));
             answerCallback(peerId, userId, eventId, "⚠ Требуется подтверждение");
             return;
         }
@@ -825,7 +834,7 @@ public class VkBridgeService {
         answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
     }
 
-    private void handleCheckCallback(int peerId, String actorNick, int actorLevel, long userId, String eventId, String action, JsonObject payload) {
+    private void handleCheckCallback(int peerId, String actorNick, int actorLevel, long userId, String eventId, int conversationMessageId, String action, JsonObject payload) {
         String nick = payloadStr(payload, "n", "");
         if (nick.isEmpty()) {
             answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
@@ -860,7 +869,7 @@ public class VkBridgeService {
                 return;
             }
             String type = payloadStr(payload, "t", "mute");
-            sendMessage(peerId, "Выберите пресет для " + type.toUpperCase(Locale.ROOT) + " " + nick, buildCheckPunishPresetKeyboard(nick, type));
+            updateCallbackMessage(peerId, conversationMessageId, "Выберите пресет для " + type.toUpperCase(Locale.ROOT) + " " + nick, buildCheckPunishPresetKeyboard(nick, type));
             answerCallback(peerId, userId, eventId, "✅ Выберите пресет");
             return;
         }
@@ -873,7 +882,7 @@ public class VkBridgeService {
             String type = payloadStr(payload, "t", "mute");
             String preset = payloadStr(payload, "p", "");
             if (preset.equals("custom")) {
-                sendMessage(peerId, "Используй: !" + type + " " + nick + " <time reason>");
+                updateCallbackMessage(peerId, conversationMessageId, "Используй: !" + type + " " + nick + " <time reason>", buildCheckKeyboard(nick, actorLevel));
                 answerCallback(peerId, userId, eventId, "✅ Подсказка отправлена");
                 return;
             }
@@ -882,7 +891,7 @@ public class VkBridgeService {
                 answerCallback(peerId, userId, eventId, "⚠ Preset больше недоступен");
                 return;
             }
-            sendMessage(peerId, "Подтвердить: !" + type + " " + nick + " " + preset + " ?", buildCheckPunishConfirmKeyboard(nick, type, preset));
+            updateCallbackMessage(peerId, conversationMessageId, "Подтвердить: !" + type + " " + nick + " " + preset + " ?", buildCheckPunishConfirmKeyboard(nick, type, preset));
             answerCallback(peerId, userId, eventId, "⚠ Требуется подтверждение");
             return;
         }
@@ -912,7 +921,7 @@ public class VkBridgeService {
         answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
     }
 
-    private void handleStaffDisciplineCallback(int peerId, String actorNick, int actorLevel, long userId, String eventId, String action, JsonObject payload) {
+    private void handleStaffDisciplineCallback(int peerId, String actorNick, int actorLevel, long userId, String eventId, int conversationMessageId, String action, JsonObject payload) {
         String key = payloadStr(payload, "k", "");
         if (key.isEmpty()) {
             answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
@@ -929,17 +938,17 @@ public class VkBridgeService {
             return;
         }
         if (action.equals("sdisc_warn_hint")) {
-            sendMessage(peerId, "Используй: !staffwarn " + key + " <причина>");
+            updateCallbackMessage(peerId, conversationMessageId, "Используй: !staffwarn " + key + " <причина>", buildStaffDisciplineKeyboard(key, getStaffState(key), actorLevel));
             answerCallback(peerId, userId, eventId, "✅ Подсказка отправлена");
             return;
         }
         if (action.equals("sdisc_reprimand_hint")) {
-            sendMessage(peerId, "Используй: !staffreprimand " + key + " <причина>");
+            updateCallbackMessage(peerId, conversationMessageId, "Используй: !staffreprimand " + key + " <причина>", buildStaffDisciplineKeyboard(key, getStaffState(key), actorLevel));
             answerCallback(peerId, userId, eventId, "✅ Подсказка отправлена");
             return;
         }
         if (action.equals("sdisc_suspend_prepare")) {
-            sendMessage(peerId, "Подтвердить suspend для " + key + "?", buildStaffDisciplineSuspendConfirmKeyboard(key));
+            updateCallbackMessage(peerId, conversationMessageId, "Подтвердить suspend для " + key + "?", buildStaffDisciplineSuspendConfirmKeyboard(key));
             answerCallback(peerId, userId, eventId, "⚠ Требуется подтверждение");
             return;
         }
@@ -954,7 +963,7 @@ public class VkBridgeService {
             return;
         }
         if (action.equals("sdisc_restore_prepare")) {
-            sendMessage(peerId, "Подтвердить restore для " + key + "?", buildStaffDisciplineRestoreConfirmKeyboard(key));
+            updateCallbackMessage(peerId, conversationMessageId, "Подтвердить restore для " + key + "?", buildStaffDisciplineRestoreConfirmKeyboard(key));
             answerCallback(peerId, userId, eventId, "⚠ Требуется подтверждение");
             return;
         }
@@ -971,7 +980,7 @@ public class VkBridgeService {
         answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
     }
 
-    private void handleAuditCallback(int peerId, String actorNick, int actorLevel, long userId, String eventId, String action, JsonObject payload) {
+    private void handleAuditCallback(int peerId, String actorNick, int actorLevel, long userId, String eventId, int conversationMessageId, String action, JsonObject payload) {
         String mode = payloadStr(payload, "m", "recent");
         if (action.equals("audit_refresh")) {
             handleAudit(peerId, actorLevel, "!audit " + mode);
@@ -1148,8 +1157,8 @@ public class VkBridgeService {
 
         List<String> rows = new ArrayList<>();
         rows.add("👤 " + nick);
-        rows.add("Статус: " + (online ? "online" : "offline"));
-        rows.add("Last seen: " + formatLastSeen(lastSeen.getOrDefault(uuid, op.getLastPlayed()), online));
+        rows.add("Статус: " + (online ? "в сети" : "не в сети"));
+        rows.add("Последний онлайн: " + formatLastSeen(lastSeen.getOrDefault(uuid, op.getLastPlayed()), online));
         rows.add("Онлайн сегодня: " + formatDuration(onlineForDays(uuid, 1)));
         rows.add("Онлайн 7 дней: " + formatDuration(onlineForDays(uuid, 7)));
         rows.add("Онлайн 30 дней: " + formatDuration(onlineForDays(uuid, 30)));
@@ -1161,7 +1170,7 @@ public class VkBridgeService {
 
     private String resolveRole(String nick, Player online) {
         for (AdminData data : admins.values()) {
-            if (data.nickname.equalsIgnoreCase(nick)) return "vk-admin-lvl-" + data.level;
+            if (data.nickname.equalsIgnoreCase(nick)) return levelLabel(data.level);
         }
         if (online != null) {
             if (online.hasPermission("group.admin")) return "admin";
@@ -1193,7 +1202,7 @@ public class VkBridgeService {
 
         if (mode.equals("tickets")) {
             List<String> rows = new ArrayList<>();
-            rows.add("📜 Lookup tickets " + p[1]);
+            rows.add("📜 Лог тикетов: " + p[1]);
             int c = 0;
             for (Ticket t : tickets.values()) {
                 if (!t.author.equalsIgnoreCase(p[1])) continue;
@@ -1207,12 +1216,12 @@ public class VkBridgeService {
 
         if (mode.equals("punish")) {
             List<String> rows = new ArrayList<>();
-            rows.add("📜 Lookup punish " + p[1]);
+            rows.add("📜 Лог наказаний: " + p[1]);
             int c = 0;
             for (int i = punishments.size() - 1; i >= 0; i--) {
                 PunishmentRecord pr = punishments.get(i);
                 if (!pr.target.equalsIgnoreCase(p[1])) continue;
-                rows.add(formatAgo(pr.time) + " • " + pr.type + " • " + pr.reason + (pr.reverted ? " (reverted)" : ""));
+                rows.add(formatAgo(pr.time) + " • " + pr.type + " • " + pr.reason + (pr.reverted ? " (отменено)" : ""));
                 if (++c >= limit) break;
             }
             if (c == 0) rows.add("нет записей");
@@ -1221,9 +1230,9 @@ public class VkBridgeService {
         }
 
         Deque<CommandLogEntry> log = commandLog.get(nick);
-        if (log == null || log.isEmpty()) { sendMessage(peerId, "📜 Команд нет."); return; }
+        if (log == null || log.isEmpty()) { sendMessage(peerId, "📜 Команд за период нет."); return; }
         List<String> rows = new ArrayList<>();
-        rows.add("📜 Lookup command " + p[1]);
+        rows.add("📜 Лог команд: " + p[1]);
         int c = 0;
         for (CommandLogEntry e : log) {
             rows.add(formatAgo(e.time) + " • " + e.command);
@@ -1271,7 +1280,7 @@ public class VkBridgeService {
         rows.add("First response avg: " + (avgFirst == 0 ? "н/д" : avgFirst + " мин"));
         rows.add("Punishments/reverted: " + s.punishments + "/" + s.reverted);
         rows.add("Active discipline: " + s.activeDiscipline);
-        rows.add("Status: " + state.status);
+        rows.add("Статус: " + state.status);
         rows.add("Active reprimands: " + activeReprimands + "/" + autoSuspendThreshold);
         if (state.status == StaffStatus.SUSPENDED) rows.add("Suspend reason: " + state.suspendedReason);
         rows.add("Quality: " + quality);
@@ -1292,7 +1301,7 @@ public class VkBridgeService {
         String flag = state.status == StaffStatus.SUSPENDED ? "suspended" : activeReprimands > 0 ? "reprimanded" : activeWarnings > 0 ? "warned" : "ok";
 
         List<String> rows = new ArrayList<>();
-        rows.add("👤 Staff: " + formatStaffLabel(key, state.nick));
+        rows.add("👤 Сотрудник: " + formatStaffLabel(key, state.nick));
         rows.add("Роль: " + role);
         rows.add("Статус: " + state.status);
         rows.add("Активные предупреждения: " + activeWarnings);
@@ -1321,13 +1330,13 @@ public class VkBridgeService {
 
         List<String> rows = new ArrayList<>();
         rows.add("🔎 RevokeCheck: " + formatStaffLabel(key, state.nick));
-        rows.add("Status: " + state.status);
+        rows.add("Статус: " + state.status);
         rows.add("VK remove: " + vkStatus + (state.lastVkRemovedChats >= 0 ? " (" + state.lastVkRemovedChats + " chats)" : ""));
         rows.add("Server revoke: " + serverStatus);
-        if (state.lastServerFailedCommands > 0) rows.add("Failed revoke commands: " + state.lastServerFailedCommands);
-        rows.add("Server rights actual state: UNKNOWN");
-        if (state.status == StaffStatus.SUSPENDED) rows.add("Last suspend: " + formatLastSeen(state.suspendedAt.toEpochMilli(), false));
-        rows.add("Source: " + source);
+        if (state.lastServerFailedCommands > 0) rows.add("Ошибок revoke-команд: " + state.lastServerFailedCommands);
+        rows.add("Фактическое состояние прав сервера: UNKNOWN");
+        if (state.status == StaffStatus.SUSPENDED) rows.add("Последнее отстранение: " + formatLastSeen(state.suspendedAt.toEpochMilli(), false));
+        rows.add("Источник: " + source);
         sendMessage(peerId, String.join("\n", rows));
     }
 
@@ -1341,10 +1350,10 @@ public class VkBridgeService {
         try {
             long id = Long.parseLong(key);
             AdminData data = admins.get(id);
-            if (data != null) return "lvl " + data.level;
+            if (data != null) return levelLabel(data.level);
         } catch (Exception ignored) {}
         if (nick != null && !nick.isEmpty()) {
-            for (AdminData d : admins.values()) if (nick.equalsIgnoreCase(d.nickname)) return "lvl " + d.level;
+            for (AdminData d : admins.values()) if (nick.equalsIgnoreCase(d.nickname)) return levelLabel(d.level);
         }
         return "staff";
     }
@@ -1403,14 +1412,14 @@ public class VkBridgeService {
             StaffStateRecord state = getStaffState(key);
             int activeReprimands = countActiveReprimands(key);
             rows.add("📘 Discipline " + key);
-            rows.add("Status: " + state.status);
+            rows.add("Статус: " + state.status);
             rows.add("Активные выговоры: " + activeReprimands + "/" + autoSuspendThreshold + (state.status == StaffStatus.SUSPENDED ? " (AUTO-SUSPEND)" : ""));
             if (state.status == StaffStatus.SUSPENDED) {
-                rows.add("Suspended by: " + state.suspendedBy);
-                rows.add("Suspended at: " + formatAgo(state.suspendedAt));
-                rows.add("Reason: " + state.suspendedReason);
+                rows.add("Кем отстранён: " + state.suspendedBy);
+                rows.add("Когда отстранён: " + formatAgo(state.suspendedAt));
+                rows.add("Причина: " + state.suspendedReason);
             }
-            for (DisciplineRecord r : discipline) if (key.equalsIgnoreCase(r.target)) rows.add("#" + r.id + " " + r.type + " | " + (r.forgiven ? "forgiven" : "active") + " | " + r.text);
+            for (DisciplineRecord r : discipline) if (key.equalsIgnoreCase(r.target)) rows.add("#" + r.id + " " + r.type + " | " + (r.forgiven ? "погашен" : "активен") + " | " + r.text);
             if (rows.size() <= 4) rows.add("нет записей");
             sendMessage(peerId, String.join("\n", rows), buildStaffDisciplineKeyboard(key, state, actorLevel));
             return;
@@ -1640,11 +1649,29 @@ public class VkBridgeService {
         return null;
     }
 
+    private PlayerIpState resolvePlayerIpStateWithFallback(String nick) {
+        PlayerIpState st = resolvePlayerIpStateByNick(nick);
+        if (st != null && st.lastIp != null && !st.lastIp.isEmpty()) return st;
+
+        Player online = Bukkit.getPlayerExact(nick);
+        if (online != null && online.getAddress() != null && online.getAddress().getAddress() != null) {
+            trackPlayerIp(online, System.currentTimeMillis());
+            st = resolvePlayerIpStateByNick(nick);
+            if (st != null && st.lastIp != null && !st.lastIp.isEmpty()) return st;
+        }
+
+        try {
+            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "seen " + nick);
+        } catch (Exception ignored) {
+        }
+        return resolvePlayerIpStateByNick(nick);
+    }
+
     private void handleGetIp(int peerId, String actor, String text) {
         String[] p = text.split("\\s+");
         if (p.length != 2) { sendMessage(peerId, "Использование: !getip <nick>"); return; }
-        PlayerIpState st = resolvePlayerIpStateByNick(p[1]);
-        if (st == null || st.lastIp == null || st.lastIp.isEmpty()) { sendMessage(peerId, "IP не найден"); return; }
+        PlayerIpState st = resolvePlayerIpStateWithFallback(p[1]);
+        if (st == null || st.lastIp == null || st.lastIp.isEmpty()) { sendMessage(peerId, "IP игрока не найден"); return; }
         List<String> rows = new ArrayList<>();
         rows.add("🌐 Игрок: " + (st.nick == null || st.nick.isEmpty() ? p[1] : st.nick));
         rows.add("IP: " + st.lastIp);
@@ -1662,8 +1689,8 @@ public class VkBridgeService {
         String nick = "";
         String uuid = "";
         if (!target.matches("\\d{1,3}(\\.\\d{1,3}){3}")) {
-            PlayerIpState st = resolvePlayerIpStateByNick(target);
-            if (st == null || st.lastIp == null || st.lastIp.isEmpty()) { sendMessage(peerId, "IP не найден"); return; }
+            PlayerIpState st = resolvePlayerIpStateWithFallback(target);
+            if (st == null || st.lastIp == null || st.lastIp.isEmpty()) { sendMessage(peerId, "IP игрока не найден"); return; }
             ip = st.lastIp;
             nick = st.nick == null ? target : st.nick;
             uuid = st.uuid == null ? "" : st.uuid.toString();
@@ -1714,6 +1741,7 @@ public class VkBridgeService {
         }
         String scope = type == RestrictionType.REPORT_BLOCK ? "REPORT_BLOCK_ISSUED" : "HELPOP_BLOCK_ISSUED";
         audit(scope, actor, "target=" + p[1] + " until=" + expiresAt + " reason=" + reason);
+        sendToChat(ChatType.EVENTS, "🚫 " + (type == RestrictionType.REPORT_BLOCK ? "бан репорта" : "бан помощи") + ": " + p[1] + " до " + formatUntil(expiresAt));
         sendMessage(peerId, "✅ " + (type == RestrictionType.REPORT_BLOCK ? "/report" : "/helpop") + " отключён\nИгрок: " + p[1] + "\nСрок: " + p[2] + "\nПричина: " + reason);
     }
 
@@ -1731,6 +1759,7 @@ public class VkBridgeService {
         String reason = p.length >= 3 ? p[2] : "manual";
         String scope = type == RestrictionType.REPORT_BLOCK ? "REPORT_BLOCK_REMOVED" : "HELPOP_BLOCK_REMOVED";
         audit(scope, actor, "target=" + p[1] + " reason=" + reason);
+        sendToChat(ChatType.EVENTS, "✅ Снят " + (type == RestrictionType.REPORT_BLOCK ? "бан репорта" : "бан помощи") + ": " + p[1]);
         sendMessage(peerId, "✅ Ограничение снято: " + p[1]);
     }
 
@@ -1835,7 +1864,7 @@ public class VkBridgeService {
         dbPunishmentReversal(type, actor, p[1], reason);
 
         audit("punish", actor, type + " " + p[1] + " " + reason);
-        sendToChat(ChatType.MODMANAGE, "♻ " + actor + " -> /" + cmd);
+        sendToChat(ChatType.EVENTS, "♻ " + actor + " -> /" + cmd);
         sendMessage(peerId, "✅ Отмена отправлена: " + type + " " + p[1]);
     }
 
@@ -1870,7 +1899,7 @@ public class VkBridgeService {
         }
 
         audit("punish", actor, type + " " + target + " " + payload);
-        sendToChat(ChatType.MODMANAGE, "⚖ " + actor + " -> /" + cmd);
+        sendToChat(ChatType.EVENTS, "⚖ " + actor + " -> /" + cmd);
         sendMessage(peerId, "✅ " + type.toUpperCase(Locale.ROOT) + " отправлен: " + target);
     }
 
@@ -1887,11 +1916,11 @@ public class VkBridgeService {
 
     private void handleAdminSet(int peerId, int actorLevel, String actor, String text) {
         String[] p = text.split("\\s+");
-        if (p.length < 4 || p.length > 5) { sendMessage(peerId, "Использование: !admin set @user nick [1-5]"); return; }
+        if (p.length < 4 || p.length > 5) { sendMessage(peerId, "Использование: !admin set @user nick [1-5|helper|moder|admin|chief|owner]"); return; }
         UserProfile user = resolveUser(p[2]);
         if (user == null) { sendMessage(peerId, "Не удалось определить пользователя"); return; }
         int level = p.length == 5 ? parseLevel(p[4], -1) : 1;
-        if (level < 1 || level > 5) { sendMessage(peerId, "Уровень 1..5"); return; }
+        if (level < 1 || level > 5) { sendMessage(peerId, "Уровень: 1..5 или helper/moder/admin/chief/owner"); return; }
         if (!canAssignLevel(actorLevel, level)) { sendMessage(peerId, "Недостаточно прав"); return; }
         AdminData current = admins.get(user.id);
         if (current != null && !canModifyTarget(actorLevel, current.level)) { sendMessage(peerId, "Недостаточно прав"); return; }
@@ -1902,23 +1931,23 @@ public class VkBridgeService {
         persistNickname(user.id, p[3]);
 
         audit("admin", actor, "set " + user.id + " nick=" + p[3] + " lvl=" + level);
-        sendMessage(peerId, "✅ Назначено: " + user.mention + " (lvl " + level + ")");
+        sendMessage(peerId, "✅ Назначено: " + user.mention + " (" + levelLabel(level) + ")");
     }
 
     private void handleAdminLevel(int peerId, int actorLevel, String actor, String text) {
         String[] p = text.split("\\s+");
-        if (p.length != 4) { sendMessage(peerId, "Использование: !admin level @id 1..5"); return; }
+        if (p.length != 4) { sendMessage(peerId, "Использование: !admin level @id <1..5|helper|moder|admin|chief|owner>"); return; }
         UserProfile user = resolveUser(p[2]);
         if (user == null || !admins.containsKey(user.id)) { sendMessage(peerId, "Администратор не найден"); return; }
         int level = parseLevel(p[3], -1);
-        if (level < 1 || level > 5) { sendMessage(peerId, "Уровень 1..5"); return; }
+        if (level < 1 || level > 5) { sendMessage(peerId, "Уровень: 1..5 или helper/moder/admin/chief/owner"); return; }
         AdminData target = admins.get(user.id);
         if (!canModifyTarget(actorLevel, target.level) || !canAssignLevel(actorLevel, level)) { sendMessage(peerId, "Недостаточно прав"); return; }
         int old = target.level;
         target.level = level;
         persistAdmin(user.id, target.level, target.nickname);
         audit("admin", actor, "level " + user.id + " " + old + "->" + level);
-        sendMessage(peerId, "✅ Уровень обновлён: " + old + " -> " + level);
+        sendMessage(peerId, "✅ Уровень обновлён: " + levelLabel(old) + " -> " + levelLabel(level));
     }
 
     private void handleAdminRemove(int peerId, int actorLevel, String actor, String text) {
@@ -2163,6 +2192,28 @@ public class VkBridgeService {
             if (keyboardJson != null && !keyboardJson.isEmpty()) params.put("keyboard", keyboardJson);
             callVkMethod("messages.send", params);
         } catch (Exception ignored) {
+        }
+    }
+
+    private void updateCallbackMessage(int peerId, int conversationMessageId, String message, String keyboardJson) {
+        if (!editMessage(peerId, conversationMessageId, message, keyboardJson)) {
+            sendMessage(peerId, message, keyboardJson);
+        }
+    }
+
+    private boolean editMessage(int peerId, int conversationMessageId, String message, String keyboardJson) {
+        if (accessToken == null || accessToken.isEmpty()) return false;
+        if (conversationMessageId <= 0) return false;
+        try {
+            Map<String, String> params = new HashMap<>();
+            params.put("peer_id", String.valueOf(peerId));
+            params.put("conversation_message_id", String.valueOf(conversationMessageId));
+            params.put("message", message);
+            if (keyboardJson != null && !keyboardJson.isEmpty()) params.put("keyboard", keyboardJson);
+            callVkMethod("messages.edit", params);
+            return true;
+        } catch (Exception ignored) {
+            return false;
         }
     }
 
@@ -2453,11 +2504,30 @@ public class VkBridgeService {
         if (admins.isEmpty()) return "Администраторы не настроены";
         List<String> rows = new ArrayList<>();
         rows.add("👥 Администраторы");
-        for (Map.Entry<Long, AdminData> e : admins.entrySet()) rows.add(mentionById(e.getKey()) + " — " + e.getValue().nickname + " (lvl " + e.getValue().level + ")");
+        for (Map.Entry<Long, AdminData> e : admins.entrySet()) rows.add(mentionById(e.getKey()) + " — " + e.getValue().nickname + " (" + levelLabel(e.getValue().level) + ")");
         return String.join("\n", rows);
     }
 
-    private int parseLevel(String raw, int def) { try { return clampLevel(Integer.parseInt(raw)); } catch (Exception e) { return def; } }
+    private void handleAdminInfo(int peerId, String text) {
+        String[] p = text.split("\\s+");
+        if (p.length != 3) { sendMessage(peerId, "Использование: !admin info @user"); return; }
+        UserProfile user = resolveUser(p[2]);
+        if (user == null) { sendMessage(peerId, "Пользователь не найден"); return; }
+        AdminData data = admins.get(user.id);
+        if (data == null) { sendMessage(peerId, "Пользователь не является администратором"); return; }
+        sendMessage(peerId, "👤 " + user.mention + "\nНик: " + data.nickname + "\nРоль: " + levelLabel(data.level));
+    }
+
+    private int parseLevel(String raw, int def) {
+        if (raw == null) return def;
+        String v = raw.trim().toLowerCase(Locale.ROOT);
+        if (v.equals("helper") || v.equals("хелпер")) return 1;
+        if (v.equals("moder") || v.equals("модер")) return 2;
+        if (v.equals("admin") || v.equals("админ")) return 3;
+        if (v.equals("chief") || v.equals("шеф")) return 4;
+        if (v.equals("owner") || v.equals("владелец")) return 5;
+        try { return clampLevel(Integer.parseInt(v)); } catch (Exception e) { return def; }
+    }
     private boolean canAssignLevel(int actor, int target) {
         if (actor >= 5) return target >= 1 && target <= 4;
         if (actor == 4) return target >= 1 && target <= 3;
@@ -2470,6 +2540,17 @@ public class VkBridgeService {
         return actor > target;
     }
     private int clampLevel(int x) { return Math.max(1, Math.min(5, x)); }
+
+    private String levelLabel(int level) {
+        return switch (level) {
+            case 1 -> "helper";
+            case 2 -> "moder";
+            case 3 -> "admin";
+            case 4 -> "chief";
+            case 5 -> "owner";
+            default -> "level-" + level;
+        };
+    }
 
     private void persistAdmin(long id, int level, String nick) {
         String b = "vk.admins." + id;
