@@ -747,6 +747,8 @@ public class VkBridgeService {
             handleMove(peerId, actorNick, "!move " + t.id + " " + to);
             answerCallback(peerId, userId, eventId, "✅ Тикет перемещён");
             sendMessage(peerId, t.formatCard(false), buildTicketKeyboard(t, false, actorLevel));
+            ChatType targetChat = target == TicketCategory.SUPPORT ? ChatType.SUPPORT : ChatType.MODMANAGE;
+            sendToChat(targetChat, t.formatCard(false), buildTicketKeyboard(t, false, actorLevel));
             return;
         }
 
@@ -827,6 +829,12 @@ public class VkBridgeService {
         String nick = payloadStr(payload, "n", "");
         if (nick.isEmpty()) {
             answerCallback(peerId, userId, eventId, "⚠ Действие уже неактуально");
+            return;
+        }
+
+        if (action.equals("check_show")) {
+            handleCheck(peerId, actorLevel, actorNick, "!check " + nick);
+            answerCallback(peerId, userId, eventId, "✅ Карточка игрока открыта");
             return;
         }
 
@@ -2136,6 +2144,11 @@ public class VkBridgeService {
         if (peerId > 0) sendMessage(peerId, message);
     }
 
+    private void sendToChat(ChatType type, String message, String keyboardJson) {
+        int peerId = toPeerId(chatIds.getOrDefault(type, 0));
+        if (peerId > 0) sendMessage(peerId, message, keyboardJson);
+    }
+
     private void sendMessage(int peerId, String message) {
         sendMessage(peerId, message, null);
     }
@@ -2178,6 +2191,7 @@ public class VkBridgeService {
                 callbackButton("Report", "secondary", mapOfObj("a", "tickets_filter", "f", "report", "v", 1)),
                 callbackButton("Обновить", "positive", mapOfObj("a", "tickets_filter", "f", "open", "v", 1))
         ));
+        buttons.add(Collections.singletonList(callbackButton("⬅ Назад", "secondary", mapOfObj("a", "tickets_filter", "f", "open", "v", 1))));
         return keyboardJson(buttons, false);
     }
 
@@ -2197,7 +2211,10 @@ public class VkBridgeService {
         row2.add(callbackButton(t.category == TicketCategory.REPORT ? "Уже report" : "В report", "secondary", mapOfObj("a", "ticket_move_prepare", "id", t.id, "to", "report", "v", 1)));
         if (!row2.isEmpty()) buttons.add(row2);
 
-        buttons.add(Collections.singletonList(callbackButton(full ? "Кратко" : "Полно", "positive", mapOfObj("a", full ? "ticket_view" : "ticket_full", "id", t.id, "v", 1))));
+        buttons.add(Arrays.asList(
+                callbackButton(full ? "Кратко" : "Полно", "positive", mapOfObj("a", full ? "ticket_view" : "ticket_full", "id", t.id, "v", 1)),
+                callbackButton("⬅ Назад", "secondary", mapOfObj("a", "tickets_filter", "f", "open", "v", 1))
+        ));
         return keyboardJson(buttons, false);
     }
 
@@ -2205,7 +2222,7 @@ public class VkBridgeService {
         List<List<Map<String, Object>>> buttons = new ArrayList<>();
         buttons.add(Arrays.asList(
                 callbackButton("Подтвердить", "negative", mapOfObj("a", "ticket_close_confirm", "id", id, "v", 1)),
-                callbackButton("Отмена", "secondary", mapOfObj("a", "ticket_view", "id", id, "v", 1))
+                callbackButton("⬅ Назад", "secondary", mapOfObj("a", "ticket_view", "id", id, "v", 1))
         ));
         return keyboardJson(buttons, true);
     }
@@ -2214,7 +2231,7 @@ public class VkBridgeService {
         List<List<Map<String, Object>>> buttons = new ArrayList<>();
         buttons.add(Arrays.asList(
                 callbackButton("Подтвердить", "primary", mapOfObj("a", "ticket_move_confirm", "id", id, "to", to, "v", 1)),
-                callbackButton("Отмена", "secondary", mapOfObj("a", "ticket_view", "id", id, "v", 1))
+                callbackButton("⬅ Назад", "secondary", mapOfObj("a", "ticket_view", "id", id, "v", 1))
         ));
         return keyboardJson(buttons, true);
     }
@@ -2226,6 +2243,7 @@ public class VkBridgeService {
                 callbackButton("RevokeCheck", "secondary", mapOfObj("a", "staffrevokecheck_open", "k", key, "v", 1)),
                 callbackButton("Обновить", "positive", mapOfObj("a", "staffstatus_show", "k", key, "v", 1))
         ));
+        buttons.add(Collections.singletonList(callbackButton("⬅ Назад", "secondary", mapOfObj("a", "staffstatus_show", "k", key, "v", 1))));
 
         if (botAccessPolicy.hasAccess(actorLevel, "discipline")) {
             buttons.add(Arrays.asList(
@@ -2255,6 +2273,7 @@ public class VkBridgeService {
                     callbackButton("Warn", "primary", mapOfObj("a", "check_punish_menu", "n", nick, "t", "warn", "v", 1))
             ));
         }
+        buttons.add(Collections.singletonList(callbackButton("⬅ Назад", "secondary", mapOfObj("a", "check_show", "n", nick, "v", 1))));
         return keyboardJson(buttons, false);
     }
 
@@ -2270,7 +2289,7 @@ public class VkBridgeService {
         if (!presets.isEmpty()) buttons.add(presets);
         buttons.add(Arrays.asList(
                 callbackButton("Свой текст", "secondary", mapOfObj("a", "check_preset_prepare", "n", nick, "t", type, "p", "custom", "v", 1)),
-                callbackButton("Отмена", "secondary", mapOfObj("a", "check_lookup", "n", nick, "v", 1))
+                callbackButton("⬅ Назад", "secondary", mapOfObj("a", "check_show", "n", nick, "v", 1))
         ));
         return keyboardJson(buttons, true);
     }
@@ -2279,7 +2298,7 @@ public class VkBridgeService {
         List<List<Map<String, Object>>> buttons = new ArrayList<>();
         buttons.add(Arrays.asList(
                 callbackButton("Подтвердить", "negative", mapOfObj("a", "check_punish_confirm", "n", nick, "t", type, "p", preset, "v", 1)),
-                callbackButton("Отмена", "secondary", mapOfObj("a", "check_punish_menu", "n", nick, "t", type, "v", 1))
+                callbackButton("⬅ Назад", "secondary", mapOfObj("a", "check_punish_menu", "n", nick, "t", type, "v", 1))
         ));
         return keyboardJson(buttons, true);
     }
@@ -2291,6 +2310,7 @@ public class VkBridgeService {
                 callbackButton("RevokeCheck", "secondary", mapOfObj("a", "sdisc_revokecheck", "k", key, "v", 1)),
                 callbackButton("Обновить", "positive", mapOfObj("a", "staffdiscipline_open", "k", key, "v", 1))
         ));
+        buttons.add(Collections.singletonList(callbackButton("⬅ Назад", "secondary", mapOfObj("a", "staffstatus_show", "k", key, "v", 1))));
 
         if (botAccessPolicy.hasAccess(actorLevel, "discipline")) {
             buttons.add(Arrays.asList(
@@ -2309,7 +2329,7 @@ public class VkBridgeService {
         List<List<Map<String, Object>>> buttons = new ArrayList<>();
         buttons.add(Arrays.asList(
                 callbackButton("Подтвердить", "negative", mapOfObj("a", "sdisc_suspend_confirm", "k", key, "v", 1)),
-                callbackButton("Отмена", "secondary", mapOfObj("a", "staffdiscipline_open", "k", key, "v", 1))
+                callbackButton("⬅ Назад", "secondary", mapOfObj("a", "staffdiscipline_open", "k", key, "v", 1))
         ));
         return keyboardJson(buttons, true);
     }
@@ -2318,7 +2338,7 @@ public class VkBridgeService {
         List<List<Map<String, Object>>> buttons = new ArrayList<>();
         buttons.add(Arrays.asList(
                 callbackButton("Подтвердить", "primary", mapOfObj("a", "sdisc_restore_confirm", "k", key, "v", 1)),
-                callbackButton("Отмена", "secondary", mapOfObj("a", "staffdiscipline_open", "k", key, "v", 1))
+                callbackButton("⬅ Назад", "secondary", mapOfObj("a", "staffdiscipline_open", "k", key, "v", 1))
         ));
         return keyboardJson(buttons, true);
     }
@@ -2337,6 +2357,7 @@ public class VkBridgeService {
                 callbackButton("Admin", active.equals("admin") ? "primary" : "secondary", mapOfObj("a", "audit_filter", "m", "admin", "v", 1)),
                 callbackButton("Обновить", "positive", mapOfObj("a", "audit_refresh", "m", active, "v", 1))
         ));
+        buttons.add(Collections.singletonList(callbackButton("⬅ Назад", "secondary", mapOfObj("a", "audit_filter", "m", "recent", "v", 1))));
         return keyboardJson(buttons, false);
     }
 
@@ -2344,7 +2365,7 @@ public class VkBridgeService {
         List<List<Map<String, Object>>> buttons = new ArrayList<>();
         buttons.add(Arrays.asList(
                 callbackButton("Подтвердить", "negative", mapOfObj("a", "staff_suspend_confirm", "k", key, "v", 1)),
-                callbackButton("Отмена", "secondary", mapOfObj("a", "staffstatus_show", "k", key, "v", 1))
+                callbackButton("⬅ Назад", "secondary", mapOfObj("a", "staffstatus_show", "k", key, "v", 1))
         ));
         return keyboardJson(buttons, true);
     }
@@ -2353,7 +2374,7 @@ public class VkBridgeService {
         List<List<Map<String, Object>>> buttons = new ArrayList<>();
         buttons.add(Arrays.asList(
                 callbackButton("Подтвердить", "primary", mapOfObj("a", "staff_restore_confirm", "k", key, "v", 1)),
-                callbackButton("Отмена", "secondary", mapOfObj("a", "staffstatus_show", "k", key, "v", 1))
+                callbackButton("⬅ Назад", "secondary", mapOfObj("a", "staffstatus_show", "k", key, "v", 1))
         ));
         return keyboardJson(buttons, true);
     }
