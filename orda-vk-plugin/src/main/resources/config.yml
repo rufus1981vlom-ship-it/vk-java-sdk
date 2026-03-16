@@ -2,29 +2,55 @@ vk:
   token: "PUT_GROUP_BOT_TOKEN_HERE"
   group-id: 0
   api-version: "5.199"
+
+  # legacy fallback (если vk.chats.* не заданы)
   command-chat-id: 0
   event-chat-id: 0
 
+  chats:
+    ADMMANAGE: 0
+    EVENTS: 0
+    SUPPORT: 0
+    MODMANAGE: 0
+
+  # Уровни staff: 1-helper, 2-moder, 3-admin, 4-owner-assistant, 5-owner
   admins:
     "123456789":
       nickname: "pommesshooter"
-      level: 4
+      level: 5
 
-  # Отдельные привязки ников для команды !ноунэйм (не обязательно админы)
   nicknames:
     "123456789": "pommesshooter"
 
-  # Бан-лист участников беседы
   chat-bans: {}
 
-  # Гибкая политика для !cmd
+  # Шаблоны быстрых ответов: !r <id> <template>
+  reply-templates:
+    accepted: "Принято, уже в работе."
+    checking: "Проверяем, дайте пару минут."
+    needproof: "Нужны дополнительные доказательства."
+    closed: "Кейс закрыт. Спасибо за обращение."
+
+  # Presets для быстрых наказаний
+  punishment-presets:
+    mute:
+      flood: "10m Flood"
+      caps: "15m Caps"
+    ban:
+      cheat: "7d Cheat client"
+      exploit: "3d Exploit abuse"
+    warn:
+      tox: "Toxic behavior"
+      spam: "Spam in chat"
+
   command-policy:
     enabled: true
     mode: "blacklist" # blacklist | whitelist
     blacklist: ["op", "deop", "reload", "stop"]
     whitelist: ["say", "list", "ban", "kick", "lp user", "whitelist"]
+    absolute-blacklist: ["stop", "reload confirm"]
+    chief-bypass-level: 5
 
-  # Гибкие права доступа к командам бота по уровням (1..4)
   bot-command-access:
     admins: 2
     admin_set: 3
@@ -35,4 +61,41 @@ vk:
     chat_ban: 3
     chat_unban: 3
     noname: 2
-    cmd: 1
+    cmd: 4
+    tickets: 1
+    punish: 2
+    audit: 3
+    discipline: 3
+    manage_getip: 3
+    manage_banip: 3
+    manage_unbanip: 3
+    support_restrictions: 3
+
+  retention:
+    command-log-days: 7
+    pending-days: 7
+    closed-ticket-days: 14
+
+
+staff-discipline:
+  auto-suspend:
+    enabled: true
+    threshold: 3
+    count-types: ["REPRIMAND"]
+    remove-from-vk-chats: true
+    revoke-server-rights: true
+    server-revoke-commands:
+      - "lp user {nick} parent remove helper"
+      - "lp user {nick} parent remove moder"
+      - "lp user {nick} parent remove admin"
+    notify-chat-types: ["ADMMANAGE", "EVENTS"]
+    auto-restore-on-forgive: false
+    restore-server-rights: false
+    server-restore-commands: []
+
+
+ip-actions:
+  banip-commands:
+    - "ban-ip {ip} {reason}"
+  unbanip-commands:
+    - "pardon-ip {ip}"

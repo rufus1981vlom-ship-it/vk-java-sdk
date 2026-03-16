@@ -4,3 +4,42 @@ main: com.orda.vkplugin.OrdaVkPlugin
 api-version: '1.20'
 author: Orda
 description: VK bot bridge for Paper 1.20.4 (commands + game events).
+commands:
+  ordavk:
+    description: Main OrdaVK command
+    usage: /<command> reload
+    aliases: [ovk]
+    permission: ordavk.use
+  ovk:
+    description: Alias of /ordavk
+    usage: /<command> reload
+    permission: ordavk.use
+  helpop:
+    description: Send support request to OrdaVK SUPPORT flow
+    usage: /<command> <message>
+    permission: ordavk.ticket.support
+  ac:
+    description: Alias of /helpop
+    usage: /<command> <message>
+    permission: ordavk.ticket.support
+  report:
+    description: Send report to OrdaVK MODMANAGE flow
+    usage: /<command> <message>
+    permission: ordavk.ticket.report
+  rep:
+    description: Alias of /report
+    usage: /<command> <message>
+    permission: ordavk.ticket.report
+permissions:
+  ordavk.use:
+    description: Access /ordavk command
+    default: op
+  ordavk.reload:
+    description: Reload OrdaVK config/state
+    default: op
+  ordavk.ticket.support:
+    description: Use /helpop and /ac commands
+    default: true
+  ordavk.ticket.report:
+    description: Use /report and /rep commands
+    default: true

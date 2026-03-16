@@ -24,16 +24,19 @@ public class GameEventListener implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
+        vkBridgeService.onPlayerJoin(event.getPlayer());
         vkBridgeService.notifyEvent("Игрок зашёл: " + event.getPlayer().getName());
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
+        vkBridgeService.onPlayerQuit(event.getPlayer());
         vkBridgeService.notifyEvent("Игрок вышел: " + event.getPlayer().getName());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerCommand(PlayerCommandPreprocessEvent event) {
+        vkBridgeService.onPlayerCommand(event.getPlayer().getName(), event.getMessage());
         notifyCommand(event.getPlayer().getName(), event.getMessage());
     }
 
