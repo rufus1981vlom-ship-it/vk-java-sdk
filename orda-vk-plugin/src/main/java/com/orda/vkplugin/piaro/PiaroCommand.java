@@ -30,19 +30,19 @@ public class PiaroCommand implements CommandExecutor, TabCompleter {
             case "start" -> {
                 autoPrService.start();
                 autoPromoService.start();
-                sender.sendMessage("PiarOrda: авто-пиар и авто-SMM запущены.");
+                sender.sendMessage("PROrda: авто-пиар и авто-SMM запущены.");
             }
             case "stop" -> {
                 autoPrService.stop();
                 autoPromoService.stop();
-                sender.sendMessage("PiarOrda: авто-пиар и авто-SMM остановлены.");
+                sender.sendMessage("PROrda: авто-пиар и авто-SMM остановлены.");
             }
             case "reload" -> {
                 plugin.reloadPiaro();
-                sender.sendMessage("PiarOrda: настройки перезагружены.");
+                sender.sendMessage("PROrda: настройки перезагружены.");
             }
             case "status" -> {
-                sender.sendMessage("PiarOrda status:");
+                sender.sendMessage("PROrda status:");
                 sender.sendMessage("- auto-pr.auto-enable=" + plugin.getConfig().getBoolean("auto-pr.auto-enable", true));
                 sender.sendMessage("- auto-promo.enabled=" + plugin.getConfig().getBoolean("auto-promo.enabled", true));
                 sender.sendMessage("- auto-promo.interval-minutes=" + plugin.getConfig().getLong("auto-promo.interval-minutes", 20));

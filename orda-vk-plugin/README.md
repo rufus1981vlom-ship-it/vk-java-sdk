@@ -1,4 +1,4 @@
-# PiarOrda (Paper plugin)
+# PROrda (Paper plugin)
 
 Плагин для автоматического VK-контента Minecraft-сервера:
 - **Auto Promo** — круговая промо-рассылка по группам из `groups.yml`.

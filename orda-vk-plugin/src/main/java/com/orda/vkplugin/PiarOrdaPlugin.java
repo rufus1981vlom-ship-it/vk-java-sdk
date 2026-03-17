@@ -43,7 +43,7 @@ public class PiarOrdaPlugin extends JavaPlugin {
         if (getConfig().getBoolean("auto-promo.enabled", true)) {
             autoPromoService.start();
         }
-        getLogger().info("PiarOrda enabled (auto-promo + auto-smm)");
+        getLogger().info("PROrda enabled (auto-promo + auto-smm)");
     }
 
     @Override
