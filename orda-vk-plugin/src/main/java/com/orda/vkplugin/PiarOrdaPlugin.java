@@ -1,69 +1,61 @@
 package com.orda.vkplugin;
 
-import com.orda.vkplugin.piaro.CampaignScheduler;
+import com.orda.vkplugin.piaro.AutoPrService;
 import com.orda.vkplugin.piaro.PiaroCommand;
-import com.orda.vkplugin.piaro.PromoComposer;
-import com.orda.vkplugin.piaro.SenderService;
+import com.orda.vkplugin.piaro.RuntimeFactCollector;
 import com.orda.vkplugin.piaro.Storage;
-import com.orda.vkplugin.piaro.TargetQueueService;
-import com.orda.vkplugin.piaro.VkClient;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
-import java.io.IOException;
 
 public class PiarOrdaPlugin extends JavaPlugin {
     private Storage storage;
-    private TargetQueueService queueService;
-    private SenderService senderService;
-    private CampaignScheduler scheduler;
+    private RuntimeFactCollector factCollector;
+    private AutoPrService autoPrService;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         ensureGroupConfig();
 
-        File dbFile = new File(getDataFolder(), "piaro.db");
-        storage = new Storage(dbFile, getLogger());
+        storage = new Storage(new File(getDataFolder(), "piaro.db"), getLogger());
         storage.initSchema();
 
-        PromoComposer composer = new PromoComposer(this);
-        VkClient vkClient = new VkClient(this, getLogger());
-        queueService = new TargetQueueService(this, storage);
-        senderService = new SenderService(this, storage, queueService, vkClient);
-        scheduler = new CampaignScheduler(this, storage, queueService, senderService, composer);
+        factCollector = new RuntimeFactCollector(this);
+        getServer().getPluginManager().registerEvents(factCollector, this);
 
-        PiaroCommand command = new PiaroCommand(this, scheduler);
+        autoPrService = new AutoPrService(this, storage, factCollector);
+
+        PiaroCommand command = new PiaroCommand(this, autoPrService);
         PluginCommand piaro = getCommand("piaro");
         if (piaro != null) {
             piaro.setExecutor(command);
             piaro.setTabCompleter(command);
         }
 
-        if (getConfig().getBoolean("piaro.auto-start", true)) {
-            scheduler.start();
+        if (getConfig().getBoolean("auto-pr.auto-enable", true)) {
+            autoPrService.start();
         }
-        getLogger().info("PiarOrda enabled");
+        getLogger().info("PiarOrda AutoPR enabled");
     }
 
     @Override
     public void onDisable() {
-        if (scheduler != null) {
-            scheduler.stop();
+        if (autoPrService != null) {
+            autoPrService.stop();
         }
         if (storage != null) {
-            try {
-                storage.close();
-            } catch (IOException ignored) {
-            }
+            storage.closeSilently();
         }
     }
 
     public void reloadPiaro() {
         reloadConfig();
         ensureGroupConfig();
-        queueService.reloadTargets();
+        if (autoPrService != null) {
+            autoPrService.reload();
+        }
     }
 
     private void ensureGroupConfig() {

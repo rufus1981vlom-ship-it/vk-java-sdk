@@ -1,23 +1,44 @@
-piaro:
-  auto-start: true
-  server-ip: "mc.ordaproject.net"
-  global-vk-link: "https://vk.com/orda"
-  footer-cta: "Заходи на сервер и зови друзей!"
-  max-length: 700
-  vk-api-version: "5.199"
+auto-pr:
+  auto-enable: true
+  server-ip: "play.ordaproject.net"
+  cta: "Залетай на сервер сегодня и зови друзей!"
+  text-style: "живой, игровой, без канцелярита"
+  daily-limit: 3
 
-  campaign-minutes-min: 60
-  campaign-minutes-max: 120
+  schedule:
+    morning: "09:00"
+    evening: "19:00"
+    weekly-day: "SUNDAY"
+    event-driven: true
 
-  target-delay-min-minutes: 10
-  target-delay-max-minutes: 20
+  event-thresholds:
+    pvp-kills: 6
+    deaths: 15
 
-  manual-approval: true
-  max-targets-per-campaign: 20
-  cooldown-minutes: 5
+  rubrics-enabled:
+    - "новости"
+    - "анонсы"
+    - "мемы"
+    - "гайды"
+    - "итоги недели"
+    - "живые посты по событиям"
 
-vk-profile:
-  login: ""
-  password: ""
-  app-id: ""
-  app-secret: ""
+  sources:
+    events: "Сегодня активен PvP-ивент с наградами"
+    changelog: "Улучшена стабильность сервера и оптимизирован спавн"
+    map: "Добавлены новые точки интереса около спавна"
+
+  openai:
+    api-key: "" # лучше задавать через env OPENAI_API_KEY
+    responses-model: "gpt-5-mini"
+    images-model: "gpt-image-1"
+
+  image-generation:
+    enabled: true
+  image-size: "1024x1024"
+
+  vk:
+    owner-id: -1
+    token: ""
+    api-version: "5.199"
+    group-link: "https://vk.com/your_group"

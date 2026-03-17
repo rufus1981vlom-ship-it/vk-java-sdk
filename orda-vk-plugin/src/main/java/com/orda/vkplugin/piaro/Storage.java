@@ -1,7 +1,6 @@
 package com.orda.vkplugin.piaro;
 
 import java.io.File;
-import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -9,138 +8,50 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
+import java.time.LocalDate;
 import java.util.logging.Logger;
 
-public class Storage implements AutoCloseable {
-    private final File file;
+public class Storage {
+    private final File dbFile;
     private final Logger logger;
     private Connection connection;
 
-    public Storage(File file, Logger logger) {
-        this.file = file;
+    public Storage(File dbFile, Logger logger) {
+        this.dbFile = dbFile;
         this.logger = logger;
     }
 
     public void initSchema() {
         try {
-            connection = DriverManager.getConnection("jdbc:sqlite:" + file.getAbsolutePath());
+            connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
             try (Statement st = connection.createStatement()) {
-                st.executeUpdate("create table if not exists campaigns (id integer primary key autoincrement, created_at text not null)");
-                st.executeUpdate("create table if not exists message_variants (id integer primary key autoincrement, campaign_id integer not null, text text not null, used integer not null default 0)");
-                st.executeUpdate("create table if not exists targets (id integer primary key autoincrement, group_id integer not null unique, vk_link text, enabled integer not null default 1)");
-                st.executeUpdate("create table if not exists outbox (id integer primary key autoincrement, campaign_id integer not null, target_group_id integer not null, text text not null, status text not null, created_at text not null, sent_at text)");
-                st.executeUpdate("create table if not exists send_history (id integer primary key autoincrement, group_id integer not null, text_hash text not null, sent_at text not null)");
+                st.executeUpdate("create table if not exists post_history (id integer primary key autoincrement, rubric text not null, reason text not null, text text not null, image_path text, status text not null, created_at text not null)");
+                st.executeUpdate("create table if not exists topic_history (id integer primary key autoincrement, topic text not null, created_at text not null)");
+                st.executeUpdate("create table if not exists prompt_log (id integer primary key autoincrement, rubric text not null, prompt text not null, created_at text not null)");
+                st.executeUpdate("create table if not exists publication_status (id integer primary key autoincrement, rubric text not null, status text not null, details text, created_at text not null)");
             }
         } catch (SQLException e) {
-            throw new IllegalStateException("Cannot initialize DB", e);
+            throw new IllegalStateException("Storage init error", e);
         }
     }
 
-    public int createCampaign() {
-        String now = Instant.now().toString();
-        try (PreparedStatement ps = connection.prepareStatement("insert into campaigns(created_at) values (?)", Statement.RETURN_GENERATED_KEYS)) {
-            ps.setString(1, now);
-            ps.executeUpdate();
-            try (ResultSet rs = ps.getGeneratedKeys()) {
-                if (rs.next()) {
-                    return rs.getInt(1);
-                }
-            }
-        } catch (SQLException e) {
-            throw new IllegalStateException(e);
-        }
-        return -1;
-    }
-
-    public void saveVariants(int campaignId, List<String> variants) {
-        try (PreparedStatement ps = connection.prepareStatement("insert into message_variants(campaign_id,text,used) values(?,?,0)")) {
-            for (String variant : variants) {
-                ps.setInt(1, campaignId);
-                ps.setString(2, variant);
-                ps.addBatch();
-            }
-            ps.executeBatch();
-        } catch (SQLException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    public List<String> takeUnusedVariants(int campaignId) {
-        List<String> result = new ArrayList<>();
-        try (PreparedStatement ps = connection.prepareStatement("select id,text from message_variants where campaign_id=? and used=0")) {
-            ps.setInt(1, campaignId);
+    public int countPublishedToday() {
+        String from = LocalDate.now().atStartOfDay().toInstant(java.time.ZoneOffset.UTC).toString();
+        try (PreparedStatement ps = connection.prepareStatement("select count(*) c from post_history where status='published' and created_at>=?")) {
+            ps.setString(1, from);
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    result.add(rs.getString("text"));
-                    markVariantUsed(rs.getInt("id"));
-                }
+                return rs.next() ? rs.getInt("c") : 0;
             }
         } catch (SQLException e) {
-            throw new IllegalStateException(e);
-        }
-        return result;
-    }
-
-    private void markVariantUsed(int id) throws SQLException {
-        try (PreparedStatement ps = connection.prepareStatement("update message_variants set used=1 where id=?")) {
-            ps.setInt(1, id);
-            ps.executeUpdate();
+            return 0;
         }
     }
 
-    public void cleanCampaignData(int campaignId) {
-        try (PreparedStatement p1 = connection.prepareStatement("delete from message_variants where campaign_id=?");
-             PreparedStatement p2 = connection.prepareStatement("delete from outbox where campaign_id=?");
-             PreparedStatement p3 = connection.prepareStatement("delete from campaigns where id=?")) {
-            p1.setInt(1, campaignId);
-            p1.executeUpdate();
-            p2.setInt(1, campaignId);
-            p2.executeUpdate();
-            p3.setInt(1, campaignId);
-            p3.executeUpdate();
-        } catch (SQLException e) {
-            logger.warning("DB cleanup failed: " + e.getMessage());
-        }
-    }
-
-    public int enqueueOutbox(int campaignId, int groupId, String text) {
-        try (PreparedStatement ps = connection.prepareStatement("insert into outbox(campaign_id,target_group_id,text,status,created_at) values(?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS)) {
-            ps.setInt(1, campaignId);
-            ps.setInt(2, groupId);
-            ps.setString(3, text);
-            ps.setString(4, "queued");
-            ps.setString(5, Instant.now().toString());
-            ps.executeUpdate();
-            try (ResultSet rs = ps.getGeneratedKeys()) {
-                if (rs.next()) {
-                    return rs.getInt(1);
-                }
-            }
-        } catch (SQLException e) {
-            throw new IllegalStateException(e);
-        }
-        return -1;
-    }
-
-    public void updateOutboxStatus(int outboxId, String status) {
-        try (PreparedStatement ps = connection.prepareStatement("update outbox set status=?, sent_at=? where id=?")) {
-            ps.setString(1, status);
-            ps.setString(2, Instant.now().toString());
-            ps.setInt(3, outboxId);
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            logger.warning("Cannot update outbox status: " + e.getMessage());
-        }
-    }
-
-    public boolean sentInLast24h(int groupId, String textHash) {
+    public boolean hasTopicInLast24h(String topic) {
         String edge = Instant.now().minusSeconds(24 * 3600).toString();
-        try (PreparedStatement ps = connection.prepareStatement("select count(*) c from send_history where group_id=? and text_hash=? and sent_at>=?")) {
-            ps.setInt(1, groupId);
-            ps.setString(2, textHash);
-            ps.setString(3, edge);
+        try (PreparedStatement ps = connection.prepareStatement("select count(*) c from topic_history where topic=? and created_at>=?")) {
+            ps.setString(1, topic);
+            ps.setString(2, edge);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() && rs.getInt("c") > 0;
             }
@@ -149,25 +60,86 @@ public class Storage implements AutoCloseable {
         }
     }
 
-    public void addSendHistory(int groupId, String textHash) {
-        try (PreparedStatement ps = connection.prepareStatement("insert into send_history(group_id,text_hash,sent_at) values(?,?,?)")) {
-            ps.setInt(1, groupId);
-            ps.setString(2, textHash);
-            ps.setString(3, Instant.now().toString());
+    public boolean tooSimilarRecentText(String text) {
+        String edge = Instant.now().minusSeconds(24 * 3600).toString();
+        try (PreparedStatement ps = connection.prepareStatement("select text from post_history where created_at>=? order by id desc limit 8")) {
+            ps.setString(1, edge);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String prev = rs.getString("text");
+                    if (prev != null && similarity(prev, text) >= 0.92) {
+                        return true;
+                    }
+                }
+            }
+        } catch (SQLException ignored) {
+        }
+        return false;
+    }
+
+    public void savePost(String rubric, String reason, String text, String imagePath, String status) {
+        try (PreparedStatement ps = connection.prepareStatement("insert into post_history(rubric,reason,text,image_path,status,created_at) values(?,?,?,?,?,?)")) {
+            ps.setString(1, rubric);
+            ps.setString(2, reason);
+            ps.setString(3, text);
+            ps.setString(4, imagePath);
+            ps.setString(5, status);
+            ps.setString(6, Instant.now().toString());
             ps.executeUpdate();
         } catch (SQLException e) {
-            logger.warning("Cannot write send_history: " + e.getMessage());
+            logger.warning("savePost failed: " + e.getMessage());
         }
     }
 
-    @Override
-    public void close() throws IOException {
+    public void addTopic(String topic) {
+        try (PreparedStatement ps = connection.prepareStatement("insert into topic_history(topic,created_at) values(?,?)")) {
+            ps.setString(1, topic);
+            ps.setString(2, Instant.now().toString());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            logger.warning("addTopic failed: " + e.getMessage());
+        }
+    }
+
+    public void logPrompt(String rubric, String prompt) {
+        try (PreparedStatement ps = connection.prepareStatement("insert into prompt_log(rubric,prompt,created_at) values(?,?,?)")) {
+            ps.setString(1, rubric);
+            ps.setString(2, prompt);
+            ps.setString(3, Instant.now().toString());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            logger.warning("logPrompt failed: " + e.getMessage());
+        }
+    }
+
+    public void markSkipped(String rubric, String details) {
+        try (PreparedStatement ps = connection.prepareStatement("insert into publication_status(rubric,status,details,created_at) values(?,?,?,?)")) {
+            ps.setString(1, rubric);
+            ps.setString(2, "skipped");
+            ps.setString(3, details);
+            ps.setString(4, Instant.now().toString());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            logger.warning("markSkipped failed: " + e.getMessage());
+        }
+    }
+
+    public void closeSilently() {
         if (connection != null) {
             try {
                 connection.close();
-            } catch (SQLException e) {
-                throw new IOException(e);
+            } catch (SQLException ignored) {
             }
         }
+    }
+
+    private double similarity(String a, String b) {
+        if (a.equals(b)) return 1.0;
+        int min = Math.min(a.length(), b.length());
+        int same = 0;
+        for (int i = 0; i < min; i++) {
+            if (a.charAt(i) == b.charAt(i)) same++;
+        }
+        return min == 0 ? 0 : (double) same / min;
     }
 }

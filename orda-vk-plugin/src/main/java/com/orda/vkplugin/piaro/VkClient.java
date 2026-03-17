@@ -11,93 +11,60 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
 import java.util.logging.Logger;
 
 public class VkClient {
     private final PiarOrdaPlugin plugin;
     private final Logger logger;
-    private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+    private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
     private final Gson gson = new Gson();
-
-    private String userToken;
 
     public VkClient(PiarOrdaPlugin plugin, Logger logger) {
         this.plugin = plugin;
         this.logger = logger;
     }
 
-    public boolean ensureAuthorized() {
-        if (userToken != null && !userToken.isBlank()) {
+    public CompletableFuture<Boolean> postToWallAsync(String message) {
+        String token = plugin.getConfig().getString("auto-pr.vk.token", "");
+        int ownerId = plugin.getConfig().getInt("auto-pr.vk.owner-id", 0);
+        String apiVersion = plugin.getConfig().getString("auto-pr.vk.api-version", "5.199");
+
+        if (token.isBlank() || ownerId == 0) {
+            return CompletableFuture.failedFuture(new IllegalStateException("VK token/owner-id not configured"));
+        }
+
+        String body = "owner_id=" + enc(ownerId)
+                + "&from_group=1"
+                + "&message=" + enc(message)
+                + "&access_token=" + enc(token)
+                + "&v=" + enc(apiVersion);
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.vk.com/method/wall.post"))
+                .timeout(Duration.ofSeconds(20))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(HttpResponse::body)
+                .thenApply(this::isSuccess)
+                .exceptionally(ex -> {
+                    logger.warning("VK publish failed: " + ex.getMessage());
+                    return false;
+                });
+    }
+
+    private boolean isSuccess(String body) {
+        JsonObject object = gson.fromJson(body, JsonObject.class);
+        if (object != null && object.has("response")) {
             return true;
         }
-
-        String login = plugin.getConfig().getString("vk-profile.login", "");
-        String password = plugin.getConfig().getString("vk-profile.password", "");
-        String clientId = plugin.getConfig().getString("vk-profile.app-id", "");
-        String clientSecret = plugin.getConfig().getString("vk-profile.app-secret", "");
-
-        if (login.isBlank() || password.isBlank() || clientId.isBlank() || clientSecret.isBlank()) {
-            logger.warning("VK profile credentials are not fully configured");
-            return false;
-        }
-
-        String body = "grant_type=password"
-                + "&client_id=" + enc(clientId)
-                + "&client_secret=" + enc(clientSecret)
-                + "&username=" + enc(login)
-                + "&password=" + enc(password)
-                + "&scope=" + enc("wall,groups,offline")
-                + "&v=" + enc(plugin.getConfig().getString("piaro.vk-api-version", "5.199"));
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://oauth.vk.com/token"))
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .timeout(Duration.ofSeconds(20))
-                .build();
-        try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            JsonObject object = gson.fromJson(response.body(), JsonObject.class);
-            if (object.has("access_token")) {
-                userToken = object.get("access_token").getAsString();
-                return true;
-            }
-            logger.warning("VK OAuth failed: " + response.body());
-        } catch (Exception e) {
-            logger.warning("VK OAuth error: " + e.getMessage());
-        }
+        logger.warning("VK wall.post error response: " + body);
         return false;
     }
 
-    public boolean postToGroup(int groupId, String text) {
-        if (!ensureAuthorized()) return false;
-        String version = plugin.getConfig().getString("piaro.vk-api-version", "5.199");
-
-        String body = "owner_id=" + enc("-" + groupId)
-                + "&from_group=0"
-                + "&message=" + enc(text)
-                + "&access_token=" + enc(userToken)
-                + "&v=" + enc(version);
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://api.vk.com/method/wall.post"))
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .timeout(Duration.ofSeconds(20))
-                .build();
-        try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            JsonObject object = gson.fromJson(response.body(), JsonObject.class);
-            if (object.has("response")) {
-                return true;
-            }
-            logger.warning("VK wall.post failed: " + response.body());
-        } catch (Exception e) {
-            logger.warning("VK wall.post error: " + e.getMessage());
-        }
-        return false;
-    }
-
-    private String enc(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    private String enc(Object value) {
+        return URLEncoder.encode(String.valueOf(value), StandardCharsets.UTF_8);
     }
 }
