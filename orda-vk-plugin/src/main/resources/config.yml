@@ -1,100 +1,23 @@
-vk:
-  token: "PUT_GROUP_BOT_TOKEN_HERE"
-  group-id: 0
-  api-version: "5.199"
+piaro:
+  auto-start: true
+  server-ip: "mc.ordaproject.net"
+  global-vk-link: "https://vk.com/orda"
+  footer-cta: "Заходи на сервер и зови друзей!"
+  max-length: 700
+  vk-api-version: "5.199"
 
-  # legacy fallback (если vk.chats.* не заданы)
-  command-chat-id: 0
-  event-chat-id: 0
+  campaign-minutes-min: 60
+  campaign-minutes-max: 120
 
-  chats:
-    ADMMANAGE: 0
-    EVENTS: 0
-    SUPPORT: 0
-    MODMANAGE: 0
+  target-delay-min-minutes: 10
+  target-delay-max-minutes: 20
 
-  admins:
-    "123456789":
-      nickname: "pommesshooter"
-      level: 4
+  manual-approval: true
+  max-targets-per-campaign: 20
+  cooldown-minutes: 5
 
-  nicknames:
-    "123456789": "pommesshooter"
-
-  chat-bans: {}
-
-  # Шаблоны быстрых ответов: !r <id> <template>
-  reply-templates:
-    accepted: "Принято, уже в работе."
-    checking: "Проверяем, дайте пару минут."
-    needproof: "Нужны дополнительные доказательства."
-    closed: "Кейс закрыт. Спасибо за обращение."
-
-  # Presets для быстрых наказаний
-  punishment-presets:
-    mute:
-      flood: "10m Flood"
-      caps: "15m Caps"
-    ban:
-      cheat: "7d Cheat client"
-      exploit: "3d Exploit abuse"
-    warn:
-      tox: "Toxic behavior"
-      spam: "Spam in chat"
-
-  command-policy:
-    enabled: true
-    mode: "blacklist" # blacklist | whitelist
-    blacklist: ["op", "deop", "reload", "stop"]
-    whitelist: ["say", "list", "ban", "kick", "lp user", "whitelist"]
-    absolute-blacklist: ["stop", "reload confirm"]
-    chief-bypass-level: 4
-
-  bot-command-access:
-    admins: 2
-    admin_set: 3
-    admin_level: 3
-    admin_remove: 3
-    rnick: 2
-    chat_kick: 2
-    chat_ban: 3
-    chat_unban: 3
-    noname: 2
-    cmd: 4
-    tickets: 1
-    punish: 2
-    audit: 3
-    discipline: 3
-    manage_getip: 3
-    manage_banip: 3
-    manage_unbanip: 3
-    support_restrictions: 3
-
-  retention:
-    command-log-days: 7
-    pending-days: 7
-    closed-ticket-days: 14
-
-
-staff-discipline:
-  auto-suspend:
-    enabled: true
-    threshold: 3
-    count-types: ["REPRIMAND"]
-    remove-from-vk-chats: true
-    revoke-server-rights: true
-    server-revoke-commands:
-      - "lp user {nick} parent remove helper"
-      - "lp user {nick} parent remove moder"
-      - "lp user {nick} parent remove admin"
-    notify-chat-types: ["ADMMANAGE", "EVENTS"]
-    auto-restore-on-forgive: false
-    restore-server-rights: false
-    server-restore-commands: []
-
-
-ip-actions:
-  banip-commands:
-    - "ban-ip {ip} {reason}"
-  unbanip-commands:
-    - "pardon-ip {ip}"
+vk-profile:
+  login: ""
+  password: ""
+  app-id: ""
+  app-secret: ""

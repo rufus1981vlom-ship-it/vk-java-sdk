@@ -1,0 +1,9 @@
+groups:
+  target1:
+    id: 1
+    vk-link: "https://vk.com/public1"
+    enabled: false
+  target2:
+    id: 2
+    vk-link: "https://vk.com/public2"
+    enabled: false
