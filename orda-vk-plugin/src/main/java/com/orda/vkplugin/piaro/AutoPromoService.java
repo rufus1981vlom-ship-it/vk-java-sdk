@@ -104,9 +104,6 @@ public class AutoPromoService {
     private void reloadGroups() {
         groups.clear();
         File file = new File(plugin.getDataFolder(), "groups.yml");
-        if (!file.exists()) {
-            file = new File(plugin.getDataFolder(), "group.yml");
-        }
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
         ConfigurationSection section = yaml.getConfigurationSection("groups");
         if (section == null) return;
