@@ -12,10 +12,12 @@ import java.util.List;
 public class PiaroCommand implements CommandExecutor, TabCompleter {
     private final PiarOrdaPlugin plugin;
     private final AutoPrService autoPrService;
+    private final AutoPromoService autoPromoService;
 
-    public PiaroCommand(PiarOrdaPlugin plugin, AutoPrService autoPrService) {
+    public PiaroCommand(PiarOrdaPlugin plugin, AutoPrService autoPrService, AutoPromoService autoPromoService) {
         this.plugin = plugin;
         this.autoPrService = autoPrService;
+        this.autoPromoService = autoPromoService;
     }
 
     @Override
@@ -27,15 +29,17 @@ public class PiaroCommand implements CommandExecutor, TabCompleter {
         switch (args[0].toLowerCase()) {
             case "start" -> {
                 autoPrService.start();
-                sender.sendMessage("PiarOrda AutoPR: запущен.");
+                autoPromoService.start();
+                sender.sendMessage("PiarOrda: авто-пиар и авто-SMM запущены.");
             }
             case "stop" -> {
                 autoPrService.stop();
-                sender.sendMessage("PiarOrda AutoPR: остановлен.");
+                autoPromoService.stop();
+                sender.sendMessage("PiarOrda: авто-пиар и авто-SMM остановлены.");
             }
             case "reload" -> {
                 plugin.reloadPiaro();
-                sender.sendMessage("PiarOrda AutoPR: настройки перезагружены.");
+                sender.sendMessage("PiarOrda: настройки перезагружены.");
             }
             default -> sender.sendMessage("/piaro <start|stop|reload>");
         }

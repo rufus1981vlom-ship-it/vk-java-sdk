@@ -29,6 +29,7 @@ public class Storage {
                 st.executeUpdate("create table if not exists topic_history (id integer primary key autoincrement, topic text not null, created_at text not null)");
                 st.executeUpdate("create table if not exists prompt_log (id integer primary key autoincrement, rubric text not null, prompt text not null, created_at text not null)");
                 st.executeUpdate("create table if not exists publication_status (id integer primary key autoincrement, rubric text not null, status text not null, details text, created_at text not null)");
+                st.executeUpdate("create table if not exists kv_state (k text primary key, v text not null)");
             }
         } catch (SQLException e) {
             throw new IllegalStateException("Storage init error", e);
@@ -121,6 +122,29 @@ public class Storage {
             ps.executeUpdate();
         } catch (SQLException e) {
             logger.warning("markSkipped failed: " + e.getMessage());
+        }
+    }
+
+    public int getStateInt(String key, int def) {
+        try (PreparedStatement ps = connection.prepareStatement("select v from kv_state where k=?")) {
+            ps.setString(1, key);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return Integer.parseInt(rs.getString("v"));
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return def;
+    }
+
+    public void setStateInt(String key, int value) {
+        try (PreparedStatement ps = connection.prepareStatement("insert into kv_state(k,v) values(?,?) on conflict(k) do update set v=excluded.v")) {
+            ps.setString(1, key);
+            ps.setString(2, String.valueOf(value));
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            logger.warning("setStateInt failed: " + e.getMessage());
         }
     }
 

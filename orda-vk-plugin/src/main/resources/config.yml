@@ -1,9 +1,24 @@
+vk-account:
+  # user access token (от аккаунта VK, который публикует посты)
+  token: ""
+  api-version: "5.199"
+
+auto-promo:
+  enabled: true
+  interval-minutes: 20
+  server-site: "https://orda.example"
+  server-ip: "play.ordaproject.net"
+
 auto-pr:
   auto-enable: true
   server-ip: "play.ordaproject.net"
   cta: "Залетай на сервер сегодня и зови друзей!"
   text-style: "живой, игровой, без канцелярита"
-  daily-limit: 3
+  daily-limit: 6
+
+  smm-group:
+    enabled: true
+    period-hours: 8
 
   schedule:
     morning: "09:00"
@@ -38,7 +53,5 @@ auto-pr:
   image-size: "1024x1024"
 
   vk:
-    owner-id: -1
-    token: ""
-    api-version: "5.199"
+    smm-group-owner-id: -1
     group-link: "https://vk.com/your_group"

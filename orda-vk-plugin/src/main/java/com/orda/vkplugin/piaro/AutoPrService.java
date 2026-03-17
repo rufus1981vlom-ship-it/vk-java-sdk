@@ -8,6 +8,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.time.DayOfWeek;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -29,6 +31,7 @@ public class AutoPrService {
     private LocalDate lastMorning;
     private LocalDate lastEvening;
     private LocalDate lastWeekly;
+    private Instant lastSmmAt = Instant.EPOCH;
 
     public AutoPrService(PiarOrdaPlugin plugin, Storage storage, RuntimeFactCollector factCollector) {
         this.plugin = plugin;
@@ -63,6 +66,7 @@ public class AutoPrService {
         LocalDateTime now = LocalDateTime.now();
         maybeScheduleByTime(now);
         maybeScheduleEventDriven();
+        maybeScheduleSmmPeriodic();
     }
 
     private void maybeScheduleByTime(LocalDateTime now) {
@@ -94,6 +98,16 @@ public class AutoPrService {
         }
     }
 
+
+    private void maybeScheduleSmmPeriodic() {
+        if (!plugin.getConfig().getBoolean("auto-pr.smm-group.enabled", true)) return;
+        long hours = plugin.getConfig().getLong("auto-pr.smm-group.period-hours", 8L);
+        if (Duration.between(lastSmmAt, Instant.now()).toHours() >= hours) {
+            createAndPublish("новости", "smm-periodic");
+            lastSmmAt = Instant.now();
+        }
+    }
+
     private void createAndPublish(String rubric, String reason) {
         if (!rubricEnabled(rubric)) return;
 
@@ -118,7 +132,7 @@ public class AutoPrService {
                 return CompletableFuture.completedFuture(false);
             }
             return maybeGenerateImage(rubric, text)
-                    .thenCompose(img -> vkClient.postToWallAsync(text)
+                    .thenCompose(img -> vkClient.postToWallAsync(plugin.getConfig().getInt("auto-pr.vk.smm-group-owner-id", 0), text)
                             .thenApply(success -> {
                                 storage.savePost(rubric, reason, text, img, success ? "published" : "failed");
                                 if (success) {

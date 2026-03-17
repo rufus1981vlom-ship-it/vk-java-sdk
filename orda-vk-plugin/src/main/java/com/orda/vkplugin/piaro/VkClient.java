@@ -25,17 +25,16 @@ public class VkClient {
         this.logger = logger;
     }
 
-    public CompletableFuture<Boolean> postToWallAsync(String message) {
-        String token = plugin.getConfig().getString("auto-pr.vk.token", "");
-        int ownerId = plugin.getConfig().getInt("auto-pr.vk.owner-id", 0);
-        String apiVersion = plugin.getConfig().getString("auto-pr.vk.api-version", "5.199");
+    public CompletableFuture<Boolean> postToWallAsync(int ownerId, String message) {
+        String token = plugin.getConfig().getString("vk-account.token", "");
+        String apiVersion = plugin.getConfig().getString("vk-account.api-version", "5.199");
 
         if (token.isBlank() || ownerId == 0) {
             return CompletableFuture.failedFuture(new IllegalStateException("VK token/owner-id not configured"));
         }
 
         String body = "owner_id=" + enc(ownerId)
-                + "&from_group=1"
+                + "&from_group=0"
                 + "&message=" + enc(message)
                 + "&access_token=" + enc(token)
                 + "&v=" + enc(apiVersion);
