@@ -113,3 +113,16 @@ YAML:
 - `!banip <ip|nick> <reason>` / `!unbanip <ip> [reason]` — IP ban через config-команды.
 - `!offreport <nick> <time> [reason]` / `!onreport <nick> [reason]` — временный блок `/report` и `/rep`.
 - `!offhelpop <nick> <time> [reason]` / `!onhelpop <nick> [reason]` — временный блок `/helpop` и `/ac`.
+
+
+## Maven сборка
+Собрать fat-jar плагина через Maven:
+
+```bash
+mvn -pl orda-vk-plugin -am clean package -DskipTests
+```
+
+Готовый jar:
+- `orda-vk-plugin/target/orda-vk-plugin-2.0Pro.jar`
+
+> Примечание: `paper-api` подключается как `provided` и берется из PaperMC репозитория.
