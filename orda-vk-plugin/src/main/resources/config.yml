@@ -1,11 +1,17 @@
 vk-account:
-  # user access token (от аккаунта VK, который публикует посты)
+  # user access token аккаунта VK, который публикует посты
   token: ""
   api-version: "5.199"
+  max-message-length: 3900
 
 auto-promo:
   enabled: true
   interval-minutes: 20
+  daily-limit: 24
+  min-post-length: 40
+  max-post-length: 650
+  max-targets: 200
+
   server-site: "https://orda.example"
   server-ip: "play.ordaproject.net"
 
@@ -15,6 +21,9 @@ auto-pr:
   cta: "Залетай на сервер сегодня и зови друзей!"
   text-style: "живой, игровой, без канцелярита"
   daily-limit: 6
+  min-post-length: 60
+  max-post-length: 700
+  event-cooldown-minutes: 90
 
   smm-group:
     enabled: true

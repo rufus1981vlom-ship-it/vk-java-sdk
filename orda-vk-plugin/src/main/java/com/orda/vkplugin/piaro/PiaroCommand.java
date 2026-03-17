@@ -23,7 +23,7 @@ public class PiaroCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (args.length == 0) {
-            sender.sendMessage("/piaro <start|stop|reload>");
+            sender.sendMessage("/piaro <start|stop|reload|status>");
             return true;
         }
         switch (args[0].toLowerCase()) {
@@ -41,7 +41,14 @@ public class PiaroCommand implements CommandExecutor, TabCompleter {
                 plugin.reloadPiaro();
                 sender.sendMessage("PiarOrda: настройки перезагружены.");
             }
-            default -> sender.sendMessage("/piaro <start|stop|reload>");
+            case "status" -> {
+                sender.sendMessage("PiarOrda status:");
+                sender.sendMessage("- auto-pr.auto-enable=" + plugin.getConfig().getBoolean("auto-pr.auto-enable", true));
+                sender.sendMessage("- auto-promo.enabled=" + plugin.getConfig().getBoolean("auto-promo.enabled", true));
+                sender.sendMessage("- auto-promo.interval-minutes=" + plugin.getConfig().getLong("auto-promo.interval-minutes", 20));
+                sender.sendMessage("- auto-pr.smm-group.period-hours=" + plugin.getConfig().getLong("auto-pr.smm-group.period-hours", 8));
+            }
+            default -> sender.sendMessage("/piaro <start|stop|reload|status>");
         }
         return true;
     }
@@ -49,7 +56,7 @@ public class PiaroCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return Arrays.asList("start", "stop", "reload");
+            return Arrays.asList("start", "stop", "reload", "status");
         }
         return List.of();
     }

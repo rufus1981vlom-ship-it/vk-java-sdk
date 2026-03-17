@@ -3,13 +3,13 @@ version: ${version}
 main: com.orda.vkplugin.PiarOrdaPlugin
 api-version: '1.20'
 author: Orda
-description: AI promo campaign sender for VK groups.
+description: AI promo + SMM autoposter for VK groups.
 commands:
   piaro:
-    description: Manage PiarOrda campaign scheduler
-    usage: /piaro <start|stop|reload>
+    description: Manage PiarOrda services
+    usage: /piaro <start|stop|reload|status>
     permission: piaro.admin
 permissions:
   piaro.admin:
-    description: Access to PiarOrda control command
+    description: Access to PiarOrda control commands
     default: op

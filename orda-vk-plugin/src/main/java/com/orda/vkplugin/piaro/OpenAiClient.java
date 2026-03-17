@@ -36,10 +36,15 @@ public class OpenAiClient {
         JsonObject body = new JsonObject();
         body.addProperty("model", plugin.getConfig().getString("auto-pr.openai.responses-model", "gpt-5-mini"));
         JsonArray input = new JsonArray();
-        JsonObject item = new JsonObject();
-        item.addProperty("role", "user");
-        item.addProperty("content", prompt);
-        input.add(item);
+        JsonObject message = new JsonObject();
+        message.addProperty("role", "user");
+        JsonArray content = new JsonArray();
+        JsonObject inputText = new JsonObject();
+        inputText.addProperty("type", "input_text");
+        inputText.addProperty("text", prompt);
+        content.add(inputText);
+        message.add("content", content);
+        input.add(message);
         body.add("input", input);
 
         HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.openai.com/v1/responses"))
@@ -50,7 +55,12 @@ public class OpenAiClient {
                 .build();
 
         return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenApply(HttpResponse::body)
+                .thenApply(response -> {
+                    if (response.statusCode() >= 400) {
+                        throw new IllegalStateException("OpenAI Responses HTTP " + response.statusCode() + ": " + response.body());
+                    }
+                    return response.body();
+                })
                 .thenApply(this::extractText);
     }
 
@@ -72,7 +82,12 @@ public class OpenAiClient {
                 .build();
 
         return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenApply(HttpResponse::body)
+                .thenApply(response -> {
+                    if (response.statusCode() >= 400) {
+                        throw new IllegalStateException("OpenAI Images HTTP " + response.statusCode() + ": " + response.body());
+                    }
+                    return response.body();
+                })
                 .thenApply(this::extractImageBytes);
     }
 
@@ -87,7 +102,12 @@ public class OpenAiClient {
     private String extractText(String json) {
         JsonObject o = gson.fromJson(json, JsonObject.class);
         if (o == null) return "";
+
+        if (o.has("error")) {
+            throw new IllegalStateException("OpenAI Responses error: " + o.get("error"));
+        }
         if (o.has("output_text")) return o.get("output_text").getAsString();
+
         JsonArray output = o.getAsJsonArray("output");
         if (output == null) return "";
         for (JsonElement e : output) {
@@ -105,7 +125,11 @@ public class OpenAiClient {
 
     private byte[] extractImageBytes(String json) {
         JsonObject o = gson.fromJson(json, JsonObject.class);
-        JsonArray data = o == null ? null : o.getAsJsonArray("data");
+        if (o == null) return new byte[0];
+        if (o.has("error")) {
+            throw new IllegalStateException("OpenAI Images error: " + o.get("error"));
+        }
+        JsonArray data = o.getAsJsonArray("data");
         if (data == null || data.isEmpty()) return new byte[0];
         JsonObject first = data.get(0).getAsJsonObject();
         if (!first.has("b64_json")) return new byte[0];

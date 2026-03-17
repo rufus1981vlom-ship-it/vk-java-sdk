@@ -18,6 +18,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class AutoPrService {
     private final PiarOrdaPlugin plugin;
@@ -25,13 +26,15 @@ public class AutoPrService {
     private final RuntimeFactCollector factCollector;
     private final OpenAiClient openAiClient;
     private final VkClient vkClient;
-    private final ExecutorService ioPool = Executors.newFixedThreadPool(2);
+    private ExecutorService ioPool;
 
+    private final AtomicBoolean publishInProgress = new AtomicBoolean(false);
     private BukkitTask heartbeatTask;
     private LocalDate lastMorning;
     private LocalDate lastEvening;
     private LocalDate lastWeekly;
     private Instant lastSmmAt = Instant.EPOCH;
+    private Instant lastEventDrivenAt = Instant.EPOCH;
 
     public AutoPrService(PiarOrdaPlugin plugin, Storage storage, RuntimeFactCollector factCollector) {
         this.plugin = plugin;
@@ -43,6 +46,7 @@ public class AutoPrService {
 
     public void start() {
         if (heartbeatTask != null) return;
+        ioPool = Executors.newFixedThreadPool(2);
         heartbeatTask = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::tick, 20L, 20L * 60L);
     }
 
@@ -51,16 +55,22 @@ public class AutoPrService {
             heartbeatTask.cancel();
             heartbeatTask = null;
         }
-        ioPool.shutdownNow();
+        if (ioPool != null) {
+            ioPool.shutdownNow();
+            ioPool = null;
+        }
+        publishInProgress.set(false);
     }
 
     public void reload() {
-        // no-op, config read on every tick
+        // config read on every tick
     }
 
     private void tick() {
         if (!plugin.getConfig().getBoolean("auto-pr.auto-enable", true)) return;
-        int dailyLimit = plugin.getConfig().getInt("auto-pr.daily-limit", 3);
+        if (publishInProgress.get()) return;
+
+        int dailyLimit = plugin.getConfig().getInt("auto-pr.daily-limit", 6);
         if (storage.countPublishedToday() >= dailyLimit) return;
 
         LocalDateTime now = LocalDateTime.now();
@@ -70,8 +80,8 @@ public class AutoPrService {
     }
 
     private void maybeScheduleByTime(LocalDateTime now) {
-        LocalTime morning = LocalTime.parse(plugin.getConfig().getString("auto-pr.schedule.morning", "09:00"));
-        LocalTime evening = LocalTime.parse(plugin.getConfig().getString("auto-pr.schedule.evening", "19:00"));
+        LocalTime morning = safeTime("auto-pr.schedule.morning", "09:00");
+        LocalTime evening = safeTime("auto-pr.schedule.evening", "19:00");
 
         if (!now.toLocalTime().isBefore(morning) && !now.toLocalDate().equals(lastMorning)) {
             createAndPublish("новости", "morning");
@@ -82,7 +92,7 @@ public class AutoPrService {
             lastEvening = now.toLocalDate();
         }
 
-        DayOfWeek weeklyDay = DayOfWeek.valueOf(plugin.getConfig().getString("auto-pr.schedule.weekly-day", "SUNDAY").toUpperCase(Locale.ROOT));
+        DayOfWeek weeklyDay = safeDayOfWeek(plugin.getConfig().getString("auto-pr.schedule.weekly-day", "SUNDAY"));
         if (now.getDayOfWeek() == weeklyDay && !now.toLocalDate().equals(lastWeekly)) {
             createAndPublish("итоги недели", "weekly");
             lastWeekly = now.toLocalDate();
@@ -91,18 +101,25 @@ public class AutoPrService {
 
     private void maybeScheduleEventDriven() {
         if (!plugin.getConfig().getBoolean("auto-pr.schedule.event-driven", true)) return;
+
+        int cooldownMin = plugin.getConfig().getInt("auto-pr.event-cooldown-minutes", 90);
+        if (Duration.between(lastEventDrivenAt, Instant.now()).toMinutes() < cooldownMin) {
+            return;
+        }
+
         RuntimeFactCollector.FactSnapshot facts = factCollector.snapshot();
         if (facts.pvpKills() >= plugin.getConfig().getInt("auto-pr.event-thresholds.pvp-kills", 6)
                 || facts.deaths() >= plugin.getConfig().getInt("auto-pr.event-thresholds.deaths", 15)) {
             createAndPublish("живые посты по событиям", "event");
+            lastEventDrivenAt = Instant.now();
         }
     }
 
-
     private void maybeScheduleSmmPeriodic() {
         if (!plugin.getConfig().getBoolean("auto-pr.smm-group.enabled", true)) return;
+
         long hours = plugin.getConfig().getLong("auto-pr.smm-group.period-hours", 8L);
-        if (Duration.between(lastSmmAt, Instant.now()).toHours() >= hours) {
+        if (Duration.between(lastSmmAt, Instant.now()).toHours() >= Math.max(1L, hours)) {
             createAndPublish("новости", "smm-periodic");
             lastSmmAt = Instant.now();
         }
@@ -110,41 +127,52 @@ public class AutoPrService {
 
     private void createAndPublish(String rubric, String reason) {
         if (!rubricEnabled(rubric)) return;
+        int ownerId = plugin.getConfig().getInt("auto-pr.vk.smm-group-owner-id", 0);
+        if (ownerId == 0) {
+            storage.markSkipped(rubric, "missing_smm_group_owner_id");
+            return;
+        }
+        if (!publishInProgress.compareAndSet(false, true)) {
+            return;
+        }
 
         RuntimeFactCollector.FactSnapshot facts = factCollector.snapshot();
         String topicFingerprint = rubric + ":online=" + facts.online() + ":pvp=" + facts.pvpKills() + ":deaths=" + facts.deaths();
         if (storage.hasTopicInLast24h(topicFingerprint)) {
+            publishInProgress.set(false);
             return;
         }
 
         String prompt = buildPrompt(rubric, facts);
         storage.logPrompt(rubric, prompt);
 
-        CompletableFuture<String> textFuture = openAiClient.generatePostAsync(prompt)
+        openAiClient.generatePostAsync(prompt)
                 .exceptionally(ex -> {
                     plugin.getLogger().warning("OpenAI text error: " + ex.getMessage());
                     return "";
-                });
-
-        textFuture.thenComposeAsync(text -> {
-            if (text.isBlank() || text.length() < 60 || storage.tooSimilarRecentText(text)) {
-                storage.markSkipped(rubric, "empty_or_duplicate");
-                return CompletableFuture.completedFuture(false);
-            }
-            return maybeGenerateImage(rubric, text)
-                    .thenCompose(img -> vkClient.postToWallAsync(plugin.getConfig().getInt("auto-pr.vk.smm-group-owner-id", 0), text)
-                            .thenApply(success -> {
-                                storage.savePost(rubric, reason, text, img, success ? "published" : "failed");
-                                if (success) {
-                                    storage.addTopic(topicFingerprint);
-                                }
-                                return success;
-                            }));
-        }, ioPool).exceptionally(ex -> {
-            plugin.getLogger().warning("AutoPR аварийный режим: публикация пропущена: " + ex.getMessage());
-            storage.markSkipped(rubric, "exception");
-            return false;
-        });
+                })
+                .thenComposeAsync(text -> {
+                    int minLen = plugin.getConfig().getInt("auto-pr.min-post-length", 60);
+                    if (text.isBlank() || text.length() < minLen || storage.tooSimilarRecentText(text)) {
+                        storage.markSkipped(rubric, "empty_or_duplicate");
+                        return CompletableFuture.completedFuture(false);
+                    }
+                    return maybeGenerateImage(rubric, text)
+                            .thenCompose(img -> vkClient.postToWallAsync(ownerId, text)
+                                    .thenApply(success -> {
+                                        storage.savePost(rubric, reason, text, img, success ? "published" : "failed");
+                                        if (success) {
+                                            storage.addTopic(topicFingerprint);
+                                        }
+                                        return success;
+                                    }));
+                }, ioPool)
+                .exceptionally(ex -> {
+                    plugin.getLogger().warning("AutoPR аварийный режим: публикация пропущена: " + ex.getMessage());
+                    storage.markSkipped(rubric, "exception");
+                    return false;
+                })
+                .whenComplete((ok, ex) -> publishInProgress.set(false));
     }
 
     private CompletableFuture<String> maybeGenerateImage(String rubric, String text) {
@@ -165,7 +193,8 @@ public class AutoPrService {
                         plugin.getLogger().warning("Image save failed: " + e.getMessage());
                         return "";
                     }
-                }).exceptionally(ex -> {
+                })
+                .exceptionally(ex -> {
                     plugin.getLogger().warning("OpenAI image error: " + ex.getMessage());
                     return "";
                 });
@@ -181,6 +210,7 @@ public class AutoPrService {
         String cta = plugin.getConfig().getString("auto-pr.cta", "Залетай на сервер прямо сейчас!");
         String serverIp = plugin.getConfig().getString("auto-pr.server-ip", "mc.example.net");
         String vkLink = plugin.getConfig().getString("auto-pr.vk.group-link", "https://vk.com/");
+        int maxLen = plugin.getConfig().getInt("auto-pr.max-post-length", 700);
 
         return "Ты SMM-менеджер Minecraft-сервера. Язык только русский. Без канцелярита, без выдумок. "
                 + "Сделай 1 пост рубрики '" + rubric + "'. Стиль: " + style + ". "
@@ -189,6 +219,24 @@ public class AutoPrService {
                 + ", deaths=" + facts.deaths() + ", pvp=" + facts.pvpKills() + ". "
                 + "События: " + facts.liveEvents() + ". Ивенты: " + facts.events() + ". Обновления: " + facts.changelog()
                 + ". Карта/спавн: " + facts.mapInfo() + ". "
-                + "Ограничение до 700 символов. CTA: " + cta;
+                + "Ограничение до " + maxLen + " символов. CTA: " + cta;
+    }
+
+    private LocalTime safeTime(String key, String fallback) {
+        try {
+            return LocalTime.parse(plugin.getConfig().getString(key, fallback));
+        } catch (Exception e) {
+            plugin.getLogger().warning("Invalid time for " + key + ", fallback to " + fallback);
+            return LocalTime.parse(fallback);
+        }
+    }
+
+    private DayOfWeek safeDayOfWeek(String value) {
+        try {
+            return DayOfWeek.valueOf(value.toUpperCase(Locale.ROOT));
+        } catch (Exception e) {
+            plugin.getLogger().warning("Invalid weekly-day value, fallback to SUNDAY");
+            return DayOfWeek.SUNDAY;
+        }
     }
 }

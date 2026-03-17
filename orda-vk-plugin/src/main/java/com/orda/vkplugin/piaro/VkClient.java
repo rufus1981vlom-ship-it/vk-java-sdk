@@ -12,6 +12,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Logger;
 
 public class VkClient {
@@ -33,9 +34,13 @@ public class VkClient {
             return CompletableFuture.failedFuture(new IllegalStateException("VK token/owner-id not configured"));
         }
 
+        int maxLen = plugin.getConfig().getInt("vk-account.max-message-length", 3900);
+        String payload = message.length() > maxLen ? message.substring(0, maxLen - 1) + "…" : message;
+
         String body = "owner_id=" + enc(ownerId)
                 + "&from_group=0"
-                + "&message=" + enc(message)
+                + "&message=" + enc(payload)
+                + "&random_id=" + enc(ThreadLocalRandom.current().nextInt(1, Integer.MAX_VALUE))
                 + "&access_token=" + enc(token)
                 + "&v=" + enc(apiVersion);
 
@@ -46,8 +51,13 @@ public class VkClient {
                 .build();
 
         return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .thenApply(HttpResponse::body)
-                .thenApply(this::isSuccess)
+                .thenApply(response -> {
+                    if (response.statusCode() >= 400) {
+                        logger.warning("VK HTTP error " + response.statusCode() + ": " + response.body());
+                        return false;
+                    }
+                    return isSuccess(response.body());
+                })
                 .exceptionally(ex -> {
                     logger.warning("VK publish failed: " + ex.getMessage());
                     return false;
