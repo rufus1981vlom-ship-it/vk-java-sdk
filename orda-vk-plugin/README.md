@@ -33,6 +33,13 @@ SQLite `piaro.db`:
 - `kv_state`
 
 ## Gradle сборка
+Из папки плагина:
+```bash
+cd orda-vk-plugin
+gradle build -x test
+```
+
+Из корня репозитория:
 ```bash
 gradle :orda-vk-plugin:build -x test
 ```

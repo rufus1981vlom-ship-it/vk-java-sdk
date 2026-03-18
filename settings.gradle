@@ -1,3 +1,4 @@
 rootProject.name = 'vk-java-sdk'
 include 'sdk'
+include 'paper-api-stub'
 include 'orda-vk-plugin'
