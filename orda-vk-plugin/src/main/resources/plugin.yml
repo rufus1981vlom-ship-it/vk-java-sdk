@@ -7,7 +7,7 @@ description: AI promo + SMM autoposter for VK groups.
 commands:
   piaro:
     description: Manage PROrda services
-    usage: /piaro <start|stop|reload|status>
+    usage: /piaro <start|stop|reload|status|debug [on|off]>
     permission: piaro.admin
 permissions:
   piaro.admin:

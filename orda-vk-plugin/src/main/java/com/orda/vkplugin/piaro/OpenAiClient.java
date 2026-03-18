@@ -17,6 +17,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.logging.Logger;
 
 public class OpenAiClient {
+    public record TextResult(String rawResponse, String text) {}
+
     private final PiarOrdaPlugin plugin;
     private final Logger logger;
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
@@ -27,7 +29,7 @@ public class OpenAiClient {
         this.logger = logger;
     }
 
-    public CompletableFuture<String> generatePostAsync(String prompt) {
+    public CompletableFuture<TextResult> generatePostAsync(String prompt) {
         String key = apiKey();
         if (key.isBlank()) {
             return CompletableFuture.failedFuture(new IllegalStateException("OpenAI key is empty"));
@@ -61,7 +63,7 @@ public class OpenAiClient {
                     }
                     return response.body();
                 })
-                .thenApply(this::extractText);
+                .thenApply(raw -> new TextResult(raw, extractText(raw)));
     }
 
     public CompletableFuture<byte[]> generateImageAsync(String prompt) {

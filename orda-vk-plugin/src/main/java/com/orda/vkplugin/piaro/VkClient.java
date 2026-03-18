@@ -16,6 +16,8 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Logger;
 
 public class VkClient {
+    public record VkPublishResult(boolean success, String error) {}
+
     private final PiarOrdaPlugin plugin;
     private final Logger logger;
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
@@ -26,7 +28,7 @@ public class VkClient {
         this.logger = logger;
     }
 
-    public CompletableFuture<Boolean> postToWallAsync(int ownerId, String message) {
+    public CompletableFuture<VkPublishResult> postToWallAsync(int ownerId, String message) {
         String token = plugin.getConfig().getString("vk-account.token", "");
         String apiVersion = plugin.getConfig().getString("vk-account.api-version", "5.199");
 
@@ -53,24 +55,29 @@ public class VkClient {
         return client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> {
                     if (response.statusCode() >= 400) {
-                        logger.warning("VK HTTP error " + response.statusCode() + ": " + response.body());
-                        return false;
+                        String error = "VK HTTP " + response.statusCode() + ": " + response.body();
+                        logger.warning(error);
+                        return new VkPublishResult(false, error);
                     }
-                    return isSuccess(response.body());
+                    return parseResult(response.body());
                 })
                 .exceptionally(ex -> {
-                    logger.warning("VK publish failed: " + ex.getMessage());
-                    return false;
+                    String error = "VK publish failed: " + ex.getMessage();
+                    logger.warning(error);
+                    return new VkPublishResult(false, error);
                 });
     }
 
-    private boolean isSuccess(String body) {
+    private VkPublishResult parseResult(String body) {
         JsonObject object = gson.fromJson(body, JsonObject.class);
         if (object != null && object.has("response")) {
-            return true;
+            return new VkPublishResult(true, "");
+        }
+        if (object != null && object.has("error")) {
+            return new VkPublishResult(false, object.get("error").toString());
         }
         logger.warning("VK wall.post error response: " + body);
-        return false;
+        return new VkPublishResult(false, body);
     }
 
     private String enc(Object value) {

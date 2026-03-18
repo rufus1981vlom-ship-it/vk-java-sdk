@@ -23,7 +23,7 @@ public class PiaroCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (args.length == 0) {
-            sender.sendMessage("/piaro <start|stop|reload|status>");
+            sender.sendMessage("/piaro <start|stop|reload|status|debug [on|off]>");
             return true;
         }
         switch (args[0].toLowerCase()) {
@@ -52,7 +52,13 @@ public class PiaroCommand implements CommandExecutor, TabCompleter {
                     sender.sendMessage("- last-stage=" + plugin.getStorage().getStateString("debug.last_stage", "unknown"));
                 }
             }
-            default -> sender.sendMessage("/piaro <start|stop|reload|status>");
+            case "debug" -> {
+                boolean current = plugin.getConfig().getBoolean("debug.enabled", false);
+                boolean target = args.length >= 2 ? parseBoolean(args[1], current) : !current;
+                plugin.setDebugEnabled(target);
+                sender.sendMessage("PROrda: debug mode " + (target ? "ON" : "OFF") + ".");
+            }
+            default -> sender.sendMessage("/piaro <start|stop|reload|status|debug [on|off]>");
         }
         return true;
     }
@@ -60,8 +66,18 @@ public class PiaroCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return Arrays.asList("start", "stop", "reload", "status");
+            return Arrays.asList("start", "stop", "reload", "status", "debug");
+        }
+        if (args.length == 2 && "debug".equalsIgnoreCase(args[0])) {
+            return Arrays.asList("on", "off");
         }
         return List.of();
+    }
+
+    private boolean parseBoolean(String value, boolean fallback) {
+        String v = value.toLowerCase();
+        if (v.equals("on") || v.equals("true") || v.equals("1")) return true;
+        if (v.equals("off") || v.equals("false") || v.equals("0")) return false;
+        return fallback;
     }
 }

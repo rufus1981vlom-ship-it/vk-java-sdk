@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -78,35 +79,48 @@ public class AutoPromoService {
             }
             int idx = Math.floorMod(storage.getStateInt("promo_round_robin_index", 0), enabled.size());
             PromoGroup target = enabled.get(idx);
+            String contextFingerprint = "promo|group=" + target.ownerId() + "|name=" + target.name();
 
             String prompt = buildPromoPrompt(target);
+            storage.logPrompt("promo", prompt);
             storage.setStateString("debug.last_stage", "auto-promo:openai_request");
             openAiClient.generatePostAsync(prompt)
-                    .exceptionally(ex -> {
-                        plugin.getLogger().warning("Promo AI error: " + ex.getMessage());
-                        return "";
-                    })
-                    .thenCompose(text -> {
+                    .thenCompose(result -> {
                         storage.setStateString("debug.last_stage", "auto-promo:openai_response");
+                        storage.logOpenAiResponse("promo", "round-robin:" + target.name(), "ok", result.rawResponse(), result.text());
+                        String text = result.text();
                         int minLen = plugin.getConfig().getInt("auto-promo.min-post-length", 40);
-                        if (text.isBlank() || text.length() < minLen || storage.tooSimilarRecentText(text)) {
-                            storage.markSkipped("promo", "empty_or_duplicate");
+                        if (text.isBlank()) {
+                            rejectPromo("round-robin:" + target.name(), text, "empty_openai_response", contextFingerprint);
+                            return CompletableFuture.completedFuture(false);
+                        }
+                        if (text.length() < minLen) {
+                            rejectPromo("round-robin:" + target.name(), text, "filtered_too_short", contextFingerprint);
+                            return CompletableFuture.completedFuture(false);
+                        }
+                        Optional<String> duplicateReason = storage.duplicateReason(text, contextFingerprint);
+                        if (duplicateReason.isPresent()) {
+                            rejectPromo("round-robin:" + target.name(), text, "duplicate_text:" + duplicateReason.get(), contextFingerprint);
                             return CompletableFuture.completedFuture(false);
                         }
                         storage.setStateString("debug.last_stage", "auto-promo:vk_post");
                         return vkClient.postToWallAsync(target.ownerId(), text)
-                                .thenApply(success -> {
-                                    storage.savePost("promo", "round-robin:" + target.name(), text, "", success ? "published" : "failed");
-                                    if (success) {
+                                .thenApply(vk -> {
+                                    if (vk.success()) {
+                                        storage.savePost("promo", "round-robin:" + target.name(), text, "", "published", "", contextFingerprint);
+                                        storage.markStatus("promo", "published", "round-robin:" + target.name());
                                         storage.setStateString("debug.last_stage", "auto-promo:published");
                                         storage.setStateInt("promo_round_robin_index", idx + 1);
+                                        return true;
                                     }
-                                    return success;
+                                    rejectPromo("round-robin:" + target.name(), text, "vk_publish_failed:" + vk.error(), contextFingerprint);
+                                    return false;
                                 });
                     })
                     .exceptionally(ex -> {
                         plugin.getLogger().warning("Promo аварийный режим: " + ex.getMessage());
-                        storage.markSkipped("promo", "exception");
+                        storage.logOpenAiResponse("promo", "round-robin:" + target.name(), "openai_failed", "", ex.getMessage());
+                        rejectPromo("round-robin:" + target.name(), "", "openai_failed:" + ex.getMessage(), contextFingerprint);
                         return false;
                     })
                     .whenComplete((ok, ex) -> publishInProgress.set(false));
@@ -116,6 +130,12 @@ public class AutoPromoService {
             storage.markSkipped("promo", "tick_exception");
         }
         publishInProgress.set(false);
+    }
+
+    private void rejectPromo(String reason, String text, String rejectReason, String contextFingerprint) {
+        storage.savePost("promo", reason, text == null ? "" : text, "", "rejected", rejectReason, contextFingerprint);
+        storage.markStatus("promo", "rejected", rejectReason);
+        plugin.debug("promo reject " + reason + ": " + rejectReason);
     }
 
     private String buildPromoPrompt(PromoGroup target) {

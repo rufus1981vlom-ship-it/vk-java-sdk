@@ -85,6 +85,12 @@ public class PiarOrdaPlugin extends JavaPlugin {
         }
     }
 
+    public void setDebugEnabled(boolean enabled) {
+        getConfig().set("debug.enabled", enabled);
+        saveConfig();
+        getLogger().info("PROrda debug mode: " + (enabled ? "ON" : "OFF"));
+    }
+
     private void ensureGroupsConfig() {
         if (!getDataFolder().exists()) {
             getDataFolder().mkdirs();

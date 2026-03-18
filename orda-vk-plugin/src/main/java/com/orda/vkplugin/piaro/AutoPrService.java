@@ -14,6 +14,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -142,6 +143,7 @@ public class AutoPrService {
 
         RuntimeFactCollector.FactSnapshot facts = factCollector.snapshot();
         String topicFingerprint = rubric + ":online=" + facts.online() + ":pvp=" + facts.pvpKills() + ":deaths=" + facts.deaths();
+        String contextFingerprint = factsFingerprint(rubric, reason, facts);
         if (storage.hasTopicInLast24h(topicFingerprint)) {
             publishInProgress.set(false);
             return;
@@ -152,38 +154,56 @@ public class AutoPrService {
 
         storage.setStateString("debug.last_stage", "auto-pr:openai_request");
         openAiClient.generatePostAsync(prompt)
-                .exceptionally(ex -> {
-                    plugin.getLogger().warning("OpenAI text error: " + ex.getMessage());
-                    return "";
-                })
-                .thenComposeAsync(text -> {
+                .thenComposeAsync(result -> {
                     storage.setStateString("debug.last_stage", "auto-pr:openai_response");
+                    storage.logOpenAiResponse(rubric, reason, "ok", result.rawResponse(), result.text());
+                    String text = result.text();
                     int minLen = plugin.getConfig().getInt("auto-pr.min-post-length", 60);
-                    if (text.isBlank() || text.length() < minLen || storage.tooSimilarRecentText(text)) {
-                        storage.markSkipped(rubric, "empty_or_duplicate");
+                    if (text.isBlank()) {
+                        rejectPost(rubric, reason, text, "", "empty_openai_response", contextFingerprint);
+                        return CompletableFuture.completedFuture(false);
+                    }
+                    if (text.length() < minLen) {
+                        rejectPost(rubric, reason, text, "", "filtered_too_short", contextFingerprint);
+                        return CompletableFuture.completedFuture(false);
+                    }
+                    Optional<String> duplicateReason = storage.duplicateReason(text, contextFingerprint);
+                    if (duplicateReason.isPresent()) {
+                        rejectPost(rubric, reason, text, "", "duplicate_text:" + duplicateReason.get(), contextFingerprint);
                         return CompletableFuture.completedFuture(false);
                     }
                     return maybeGenerateImage(rubric, text)
                             .thenCompose(img -> {
                                 storage.setStateString("debug.last_stage", "auto-pr:vk_post");
                                 return vkClient.postToWallAsync(ownerId, text)
-                                    .thenApply(success -> {
-                                        storage.savePost(rubric, reason, text, img, success ? "published" : "failed");
-                                        if (success) {
+                                    .thenApply(vk -> {
+                                        if (vk.success()) {
+                                            storage.savePost(rubric, reason, text, img, "published", "", contextFingerprint);
+                                            storage.markStatus(rubric, "published", reason);
                                             storage.setStateString("debug.last_stage", "auto-pr:published");
                                             storage.addTopic(topicFingerprint);
+                                            return true;
                                         }
-                                        return success;
+                                        String err = "vk_publish_failed: " + vk.error();
+                                        rejectPost(rubric, reason, text, img, err, contextFingerprint);
+                                        return false;
                                     });
                             });
                 }, ioPool)
                 .exceptionally(ex -> {
                     plugin.getLogger().warning("AutoPR аварийный режим: публикация пропущена: " + ex.getMessage());
                     storage.setStateString("debug.last_stage", "auto-pr:exception:" + ex.getClass().getSimpleName());
-                    storage.markSkipped(rubric, "exception");
+                    storage.logOpenAiResponse(rubric, reason, "openai_failed", "", ex.getMessage());
+                    rejectPost(rubric, reason, "", "", "openai_failed:" + ex.getMessage(), contextFingerprint);
                     return false;
                 })
                 .whenComplete((ok, ex) -> publishInProgress.set(false));
+    }
+
+    private void rejectPost(String rubric, String reason, String text, String imagePath, String rejectReason, String contextFingerprint) {
+        storage.savePost(rubric, reason, text == null ? "" : text, imagePath, "rejected", rejectReason, contextFingerprint);
+        storage.markStatus(rubric, "rejected", rejectReason);
+        plugin.debug("reject " + rubric + "/" + reason + ": " + rejectReason);
     }
 
     private CompletableFuture<String> maybeGenerateImage(String rubric, String text) {
@@ -231,6 +251,17 @@ public class AutoPrService {
                 + "События: " + facts.liveEvents() + ". Ивенты: " + facts.events() + ". Обновления: " + facts.changelog()
                 + ". Карта/спавн: " + facts.mapInfo() + ". "
                 + "Ограничение до " + maxLen + " символов. CTA: " + cta;
+    }
+
+    private String factsFingerprint(String rubric, String reason, RuntimeFactCollector.FactSnapshot facts) {
+        return rubric
+                + "|" + reason
+                + "|online=" + facts.online()
+                + "|peak=" + facts.peakOnline()
+                + "|joins=" + facts.joins()
+                + "|deaths=" + facts.deaths()
+                + "|pvp=" + facts.pvpKills()
+                + "|events=" + facts.liveEvents();
     }
 
     private LocalTime safeTime(String key, String fallback) {
