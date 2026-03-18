@@ -46,11 +46,13 @@ public class AutoPrService {
 
     public void start() {
         if (heartbeatTask != null) return;
+        plugin.debug("auto-pr:start");
         ioPool = Executors.newFixedThreadPool(2);
         heartbeatTask = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::tick, 20L, 20L * 60L);
     }
 
     public void stop() {
+        plugin.debug("auto-pr:stop");
         if (heartbeatTask != null) {
             heartbeatTask.cancel();
             heartbeatTask = null;
@@ -69,6 +71,7 @@ public class AutoPrService {
     private void tick() {
         if (!plugin.getConfig().getBoolean("auto-pr.auto-enable", true)) return;
         if (publishInProgress.get()) return;
+        storage.setStateString("debug.last_stage", "auto-pr:tick");
 
         int dailyLimit = plugin.getConfig().getInt("auto-pr.daily-limit", 6);
         if (storage.countPublishedToday() >= dailyLimit) return;
@@ -135,6 +138,7 @@ public class AutoPrService {
         if (!publishInProgress.compareAndSet(false, true)) {
             return;
         }
+        storage.setStateString("debug.last_stage", "auto-pr:compose");
 
         RuntimeFactCollector.FactSnapshot facts = factCollector.snapshot();
         String topicFingerprint = rubric + ":online=" + facts.online() + ":pvp=" + facts.pvpKills() + ":deaths=" + facts.deaths();
@@ -146,29 +150,36 @@ public class AutoPrService {
         String prompt = buildPrompt(rubric, facts);
         storage.logPrompt(rubric, prompt);
 
+        storage.setStateString("debug.last_stage", "auto-pr:openai_request");
         openAiClient.generatePostAsync(prompt)
                 .exceptionally(ex -> {
                     plugin.getLogger().warning("OpenAI text error: " + ex.getMessage());
                     return "";
                 })
                 .thenComposeAsync(text -> {
+                    storage.setStateString("debug.last_stage", "auto-pr:openai_response");
                     int minLen = plugin.getConfig().getInt("auto-pr.min-post-length", 60);
                     if (text.isBlank() || text.length() < minLen || storage.tooSimilarRecentText(text)) {
                         storage.markSkipped(rubric, "empty_or_duplicate");
                         return CompletableFuture.completedFuture(false);
                     }
                     return maybeGenerateImage(rubric, text)
-                            .thenCompose(img -> vkClient.postToWallAsync(ownerId, text)
+                            .thenCompose(img -> {
+                                storage.setStateString("debug.last_stage", "auto-pr:vk_post");
+                                return vkClient.postToWallAsync(ownerId, text)
                                     .thenApply(success -> {
                                         storage.savePost(rubric, reason, text, img, success ? "published" : "failed");
                                         if (success) {
+                                            storage.setStateString("debug.last_stage", "auto-pr:published");
                                             storage.addTopic(topicFingerprint);
                                         }
                                         return success;
-                                    }));
+                                    });
+                            });
                 }, ioPool)
                 .exceptionally(ex -> {
                     plugin.getLogger().warning("AutoPR аварийный режим: публикация пропущена: " + ex.getMessage());
+                    storage.setStateString("debug.last_stage", "auto-pr:exception:" + ex.getClass().getSimpleName());
                     storage.markSkipped(rubric, "exception");
                     return false;
                 })

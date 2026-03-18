@@ -17,11 +17,12 @@
 - `/piaro start`
 - `/piaro stop`
 - `/piaro reload`
-- `/piaro status`
+- `/piaro status` (в т.ч. показывает `last-stage` для диагностики)
 
 ## Конфиги
 - `config.yml` — токены, расписание, лимиты, модели, стиль текста.
 - `groups.yml` — список VK-групп для круговой рассылки.
+- `debug.enabled` — включает подробные debug-логи и фиксацию последнего шага (`debug.last_stage`) в БД.
 
 ## База
 SQLite `piaro.db`:

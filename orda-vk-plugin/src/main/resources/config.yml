@@ -1,3 +1,6 @@
+debug:
+  enabled: true
+
 vk-account:
   # user access token аккаунта VK, который публикует посты
   token: ""

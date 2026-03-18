@@ -144,6 +144,29 @@ public class Storage {
         }
     }
 
+    public synchronized String getStateString(String key, String def) {
+        try (PreparedStatement ps = connection.prepareStatement("select v from kv_state where k=?")) {
+            ps.setString(1, key);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString("v");
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return def;
+    }
+
+    public synchronized void setStateString(String key, String value) {
+        try (PreparedStatement ps = connection.prepareStatement("insert into kv_state(k,v) values(?,?) on conflict(k) do update set v=excluded.v")) {
+            ps.setString(1, key);
+            ps.setString(2, value);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            logger.warning("setStateString failed: " + e.getMessage());
+        }
+    }
+
     public synchronized int getStateInt(String key, int def) {
         try (PreparedStatement ps = connection.prepareStatement("select v from kv_state where k=?")) {
             ps.setString(1, key);

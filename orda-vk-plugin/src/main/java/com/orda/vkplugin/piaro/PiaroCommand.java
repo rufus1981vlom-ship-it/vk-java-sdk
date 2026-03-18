@@ -43,10 +43,14 @@ public class PiaroCommand implements CommandExecutor, TabCompleter {
             }
             case "status" -> {
                 sender.sendMessage("PROrda status:");
+                sender.sendMessage("- debug.enabled=" + plugin.getConfig().getBoolean("debug.enabled", false));
                 sender.sendMessage("- auto-pr.auto-enable=" + plugin.getConfig().getBoolean("auto-pr.auto-enable", true));
                 sender.sendMessage("- auto-promo.enabled=" + plugin.getConfig().getBoolean("auto-promo.enabled", true));
                 sender.sendMessage("- auto-promo.interval-minutes=" + plugin.getConfig().getLong("auto-promo.interval-minutes", 20));
                 sender.sendMessage("- auto-pr.smm-group.period-hours=" + plugin.getConfig().getLong("auto-pr.smm-group.period-hours", 8));
+                if (plugin.getStorage() != null) {
+                    sender.sendMessage("- last-stage=" + plugin.getStorage().getStateString("debug.last_stage", "unknown"));
+                }
             }
             default -> sender.sendMessage("/piaro <start|stop|reload|status>");
         }

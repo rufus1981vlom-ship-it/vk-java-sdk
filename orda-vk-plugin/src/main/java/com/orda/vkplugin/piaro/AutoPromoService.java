@@ -36,11 +36,13 @@ public class AutoPromoService {
 
     public void start() {
         if (task != null) return;
+        plugin.debug("auto-promo:start");
         long intervalMin = Math.max(1L, plugin.getConfig().getLong("auto-promo.interval-minutes", 20L));
         task = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::tick, 20L, 20L * 60L * intervalMin);
     }
 
     public void stop() {
+        plugin.debug("auto-promo:stop");
         if (task != null) {
             task.cancel();
             task = null;
@@ -59,10 +61,12 @@ public class AutoPromoService {
     private void tick() {
         if (!plugin.getConfig().getBoolean("auto-promo.enabled", true)) return;
         if (!publishInProgress.compareAndSet(false, true)) return;
+        storage.setStateString("debug.last_stage", "auto-promo:tick");
 
         try {
             int promoDailyLimit = plugin.getConfig().getInt("auto-promo.daily-limit", 24);
             if (storage.countPublishedTodayByRubric("promo") >= promoDailyLimit) {
+                plugin.debug("auto-promo:daily-limit");
                 storage.markSkipped("promo", "daily_limit_reached");
                 return;
             }
@@ -76,21 +80,25 @@ public class AutoPromoService {
             PromoGroup target = enabled.get(idx);
 
             String prompt = buildPromoPrompt(target);
+            storage.setStateString("debug.last_stage", "auto-promo:openai_request");
             openAiClient.generatePostAsync(prompt)
                     .exceptionally(ex -> {
                         plugin.getLogger().warning("Promo AI error: " + ex.getMessage());
                         return "";
                     })
                     .thenCompose(text -> {
+                        storage.setStateString("debug.last_stage", "auto-promo:openai_response");
                         int minLen = plugin.getConfig().getInt("auto-promo.min-post-length", 40);
                         if (text.isBlank() || text.length() < minLen || storage.tooSimilarRecentText(text)) {
                             storage.markSkipped("promo", "empty_or_duplicate");
                             return CompletableFuture.completedFuture(false);
                         }
+                        storage.setStateString("debug.last_stage", "auto-promo:vk_post");
                         return vkClient.postToWallAsync(target.ownerId(), text)
                                 .thenApply(success -> {
                                     storage.savePost("promo", "round-robin:" + target.name(), text, "", success ? "published" : "failed");
                                     if (success) {
+                                        storage.setStateString("debug.last_stage", "auto-promo:published");
                                         storage.setStateInt("promo_round_robin_index", idx + 1);
                                     }
                                     return success;
