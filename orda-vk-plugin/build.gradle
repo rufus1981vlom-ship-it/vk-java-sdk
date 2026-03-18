@@ -10,7 +10,6 @@ repositories {
 }
 
 dependencies {
-    implementation project(':sdk')
     compileOnly project(':paper-api-stub')
     implementation 'com.google.code.gson:gson:2.9.0'
     implementation 'org.xerial:sqlite-jdbc:3.46.1.3'
