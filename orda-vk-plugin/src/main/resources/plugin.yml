@@ -1,6 +1,15 @@
-name: OrdaVK
+name: PROrda
 version: ${version}
-main: com.orda.vkplugin.OrdaVkPlugin
+main: com.orda.vkplugin.PiarOrdaPlugin
 api-version: '1.20'
 author: Orda
-description: VK bot bridge for Paper 1.20.4 (commands + game events).
+description: AI promo + SMM autoposter for VK groups.
+commands:
+  piaro:
+    description: Manage PROrda services
+    usage: /piaro <start|stop|reload|status|debug [on|off]>
+    permission: piaro.admin
+permissions:
+  piaro.admin:
+    description: Access to PROrda control commands
+    default: op
